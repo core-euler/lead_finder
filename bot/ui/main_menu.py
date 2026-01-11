@@ -1,0 +1,19 @@
+from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+MAIN_MENU_TEXT = """
+🎯 Lead Finder
+
+Нахожу потенциальных клиентов в Telegram-чатах
+и присылаю тебе готовые карточки для аутрича.
+"""
+
+def get_main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Returns inline keyboard for the main menu."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📋 Мои программы", callback_data="my_programs")
+    builder.button(text="➕ Создать программу", callback_data="create_program")
+    builder.button(text="📊 Статистика", callback_data="statistics")
+    builder.button(text="⚙️ Настройки", callback_data="settings")
+    builder.adjust(1)  # Adjust to 1 button per row
+    return builder.as_markup()
