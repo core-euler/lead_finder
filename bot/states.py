@@ -10,3 +10,10 @@ class ProgramCreate(StatesGroup):
 class Auth(StatesGroup):
     enter_code = State()
     enter_password = State()
+
+
+class ProgramEdit(StatesGroup):
+    edit_name = State()
+    edit_niche = State()
+    edit_chats = State()
+    edit_settings = State()

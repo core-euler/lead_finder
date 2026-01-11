@@ -33,9 +33,9 @@ def format_lead_as_markdown(lead: dict, lead_index: int) -> str:
     
     score = qual.get('score', 'N/A')
     md_block = f"## Лид #{lead_index} — Оценка: {score}/10\n\n"
-    md_block += f"**Контакт:** {contact.get('telegram_username', 'N/A')}\n"
+    md_block += f"Контакт: {contact.get('telegram_username', 'N/A')}\n"
     if contact.get('telegram_channel'):
-        md_block += f"**Канал:** {contact.get('telegram_channel')} ({channel_entity_data.get('participants_count', 'N/A')} подписчиков)\n\n"
+        md_block += f"Канал: {contact.get('telegram_channel')} ({channel_entity_data.get('participants_count', 'N/A')} подписчиков)\n\n"
     else:
         md_block += "\n"
 
@@ -53,7 +53,7 @@ def format_lead_as_markdown(lead: dict, lead_index: int) -> str:
     
     md_block += "### Идея решения\n"
     if idea:
-        md_block += f"**{idea.get('idea', 'N/A')}**\n"
+        md_block += f"{idea.get('idea', 'N/A')}\n"
         md_block += f"  - Закрываемая боль: {idea.get('pain_addressed', 'N/A')}\n"
         md_block += f"  - Ценность: {idea.get('estimated_value', 'N/A')}\n"
     else:
@@ -75,8 +75,8 @@ def initialize_markdown_file(filepath: str, niche: str):
         
     report_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     header = f"# Lead Finder Report\n"
-    header += f"**Дата:** {report_date}\n"
-    header += f"**Источник:** {niche}\n\n"
+    header += f"Дата: {report_date}\n"
+    header += f"Источник: {niche}\n\n"
     header += "---\n\n"
     try:
         with open(filepath, 'w', encoding='utf-8') as f:

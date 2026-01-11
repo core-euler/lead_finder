@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.db_config import engine, async_session
-from bot.handlers import start, program_create, program_list, program_view, auth, lead_viewer
+from bot.handlers import start, program_create, program_list, program_view, auth, lead_viewer, program_edit
 from bot.middleware.db_session import DbSessionMiddleware
 from bot.models.base import Base
 from bot.models.program import Program, ProgramChat
@@ -40,6 +40,7 @@ async def main(bot_token: str):
     dp.include_router(program_create.router)
     dp.include_router(program_list.router)
     dp.include_router(program_view.router)
+    dp.include_router(program_edit.router)
     dp.include_router(auth.router)
     dp.include_router(lead_viewer.router)
 

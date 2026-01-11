@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Callable, Awaitable
 from aiogram import Bot
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from bot.db_config import async_session
@@ -133,18 +133,27 @@ async def run_program_pipeline(
         logger.info(f"  - recommended_message: {lead_data['recommended_message'][:100] if lead_data['recommended_message'] else None}...")
 
         if lead:
+            logger.info(f"Updating existing lead {lead.id} for @{username}")
             for key, value in lead_data.items():
                 setattr(lead, key, value)
         else:
+            logger.info(f"Creating new lead for @{username} with program_id={program.id}")
             lead = Lead(program_id=program.id, telegram_username=username, **lead_data)
             session.add(lead)
-        
+
         await session.flush()
         await session.refresh(lead, attribute_names=['program'])
+
+        logger.info(f"Lead saved: id={lead.id}, program_id={lead.program_id}, username=@{lead.telegram_username}")
 
         # Commit immediately so the lead is available in the database
         # for the user to click on
         await session.commit()
+
+        # DEBUG: Verify the lead is actually in the database
+        verification_query = select(func.count(Lead.id)).where(Lead.program_id == program.id)
+        verified_count = (await session.execute(verification_query)).scalar_one()
+        logger.info(f"After commit: Total leads for program_id={program.id}: {verified_count}")
 
         if on_lead_found:
             await on_lead_found(lead)
@@ -154,6 +163,12 @@ async def run_program_pipeline(
             break
     
     await session.commit()
+
+    # Final verification
+    final_count_query = select(func.count(Lead.id)).where(Lead.program_id == program.id)
+    final_count = (await session.execute(final_count_query)).scalar_one()
+    logger.info(f"Pipeline complete for program '{program.name}'. Final lead count in DB: {final_count}")
+
     return {
         "program_name": program.name, "candidates_found": total_candidates,
         "leads_qualified": qualified_leads_count

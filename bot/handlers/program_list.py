@@ -38,12 +38,12 @@ async def my_programs_handler(callback: CallbackQuery, session: AsyncSession):
 
     if not programs:
         text = (
-            "📋 **Мои программы**\n\n"
+            "📋 Мои программы\n\n"
             "У тебя пока нет программ поиска.\n"
             "Создай первую — это займёт пару минут."
         )
     else:
-        text = "📋 **Мои программы**\n\n"
+        text = "📋 Мои программы\n\n"
         for i, program in enumerate(programs):
             text += (
                 f"{i+1}️⃣ {program.name}\n"
