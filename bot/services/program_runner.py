@@ -14,6 +14,7 @@ from modules.telegram_client import AuthorizationRequiredError
 from modules import members_parser, qualifier
 from modules.enrichment import telegram as telegram_enricher
 from modules.enrichment import web_search as web_enricher
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,9 @@ async def run_program_pipeline(
             logger.info(f"--- Parsing source: {source} ---")
             candidates = await members_parser.parse_users_from_messages(
                 chat_identifier=source,
-                messages_limit=program.messages_limit,
-                only_with_channels=False 
+                messages_limit=config.MESSAGES_LIMIT,
+                only_with_channels=False,
+                use_batch_analysis=True  # Use batch analysis for efficiency
             )
             all_candidates.extend(candidates)
     except AuthorizationRequiredError:

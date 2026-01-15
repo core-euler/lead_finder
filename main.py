@@ -13,7 +13,6 @@ from modules.enrichment import web_search as web_enricher
 from modules.members_parser import ParsingPausedError
 
 import config
-from config import MIN_QUALIFICATION_SCORE
 
 logging.basicConfig(
     level=logging.INFO,
@@ -222,7 +221,8 @@ async def parse_pipeline(args) -> None:
                 chat_identifier=source,
                 only_with_channels=args.only_with_channels,
                 messages_limit=args.messages_limit,
-                progress_callback=progress_cb
+                progress_callback=progress_cb,
+                use_batch_analysis=not args.no_batch_analysis
             )
             all_candidates.extend(candidates)
             print_chat_progress(
@@ -419,16 +419,16 @@ def main() -> None:
         help="Enrich candidate data via web search."
     )
     parser_parse.add_argument(
-        "--messages-limit", type=int, default=500,
-        help="Number of recent messages to parse from each source."
+        "--messages-limit", type=int, default=config.MESSAGES_LIMIT,
+        help=f"Number of recent messages to parse from each source (default: {config.MESSAGES_LIMIT})."
     )
     parser_parse.add_argument(
         "--only-with-channels", action="store_true",
         help="Process only users who have a personal channel in their bio."
     )
     parser_parse.add_argument(
-        "--min-score", type=int, default=MIN_QUALIFICATION_SCORE,
-        help="Minimum qualification score."
+        "--min-score", type=int, default=5,
+        help="Minimum qualification score (default: 5)."
     )
     parser_parse.add_argument(
         "--max-leads", type=int, default=50,
@@ -441,6 +441,10 @@ def main() -> None:
     parser_parse.add_argument(
         "--format", type=str, default="json,md",
         help="Output formats (json,md). json is now jsonl."
+    )
+    parser_parse.add_argument(
+        "--no-batch-analysis", action="store_true",
+        help="Disable batch LLM analysis for pre-filtering candidates."
     )
     parser_parse.add_argument(
         "--safety-mode", type=str, choices=["fast", "normal", "careful"],

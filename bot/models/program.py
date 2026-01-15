@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 from .base import Base
+import config
 
 class Program(Base):
     __tablename__ = 'programs'
@@ -20,7 +21,6 @@ class Program(Base):
     # Settings
     min_score: Mapped[int] = mapped_column(Integer, default=5)
     max_leads_per_run: Mapped[int] = mapped_column(Integer, default=20)
-    messages_limit: Mapped[int] = mapped_column(Integer, default=500)
     enrich: Mapped[bool] = mapped_column(Boolean, default=False)
     
     # Schedule

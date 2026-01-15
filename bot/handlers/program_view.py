@@ -14,6 +14,7 @@ from bot.ui.main_menu import get_main_menu_keyboard
 from bot.services.program_runner import run_program_job # Import the job worker
 from bot.handlers.auth import start_auth_flow
 from bot.ui.lead_card import format_lead_card, get_lead_card_keyboard
+from sqlalchemy import delete
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -24,16 +25,24 @@ def get_program_card_keyboard(program_id: int, leads_count: int = 0) -> InlineKe
     builder = InlineKeyboardBuilder()
     if leads_count > 0:
         builder.button(text=f"👀 Посмотреть лидов ({leads_count})", callback_data=f"view_program_leads_{program_id}")
+        builder.button(text="🗑 Очистить лидов", callback_data=f"clear_leads_{program_id}")
     builder.button(text="▶️ Запустить сейчас", callback_data=f"run_program_{program_id}")
     builder.button(text="✏️ Изменить", callback_data=f"edit_program_{program_id}")
-    builder.button(text="🗑 Удалить", callback_data=f"delete_program_{program_id}")
+    builder.button(text="🗑 Удалить программу", callback_data=f"delete_program_{program_id}")
     builder.button(text="◀️ К программам", callback_data="my_programs")
-    builder.adjust(1)
+    builder.adjust(2 if leads_count > 0 else 1, 1, 1, 1, 1)
     return builder.as_markup()
 
 def get_delete_confirmation_keyboard(program_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🗑 Да, удалить", callback_data=f"confirm_delete_{program_id}")
+    builder.button(text="◀️ Нет, вернуться", callback_data=f"show_program_{program_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_clear_leads_confirmation_keyboard(program_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🗑 Да, очистить", callback_data=f"confirm_clear_leads_{program_id}")
     builder.button(text="◀️ Нет, вернуться", callback_data=f"show_program_{program_id}")
     builder.adjust(1)
     return builder.as_markup()
@@ -126,6 +135,64 @@ async def delete_program_confirmed(callback: CallbackQuery, session: AsyncSessio
     else:
         await callback.message.edit_text("Программа была удалена ранее.", reply_markup=get_main_menu_keyboard())
     await callback.answer()
+
+# --- Clear Leads Flow Handlers ---
+
+@router.callback_query(F.data.startswith("clear_leads_"))
+async def clear_leads_confirmation(callback: CallbackQuery, session: AsyncSession):
+    program_id = int(callback.data.split("_")[-1])
+
+    # Get program and count leads
+    program_query = select(Program).where(Program.id == program_id)
+    program = (await session.execute(program_query)).scalars().first()
+
+    if not program:
+        await callback.answer("Программа не найдена.", show_alert=True)
+        return
+
+    leads_count_query = select(func.count(Lead.id)).where(Lead.program_id == program.id)
+    leads_count = (await session.execute(leads_count_query)).scalar_one()
+
+    if leads_count == 0:
+        await callback.answer("Нет лидов для удаления.", show_alert=True)
+        return
+
+    text = (
+        f"🗑 Очистка лидов\n\n"
+        f"Программа: \"{program.name}\"\n"
+        f"Найдено лидов: {leads_count}\n\n"
+        f"Точно удалить всех лидов этой программы?\n\n"
+        f"⚠️ Это действие нельзя отменить."
+    )
+    await callback.message.edit_text(text, reply_markup=get_clear_leads_confirmation_keyboard(program_id))
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("confirm_clear_leads_"))
+async def clear_leads_confirmed(callback: CallbackQuery, session: AsyncSession):
+    program_id = int(callback.data.split("_")[-1])
+
+    # Get program
+    program_query = select(Program).where(Program.id == program_id)
+    program = (await session.execute(program_query)).scalars().first()
+
+    if not program:
+        await callback.answer("Программа не найдена.", show_alert=True)
+        return
+
+    # Count leads before deletion
+    leads_count_query = select(func.count(Lead.id)).where(Lead.program_id == program.id)
+    leads_count = (await session.execute(leads_count_query)).scalar_one()
+
+    # Delete all leads for this program
+    delete_query = delete(Lead).where(Lead.program_id == program_id)
+    result = await session.execute(delete_query)
+    await session.commit()
+
+    logger.info(f"Deleted {leads_count} leads for program_id={program_id} ({program.name})")
+
+    # Show updated program card
+    await callback.answer(f"✅ Удалено лидов: {leads_count}", show_alert=True)
+    await show_program_handler(callback, session)
 
 # --- Edit Stub ---
 

@@ -28,7 +28,6 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 POSTS_TO_FETCH = int(os.getenv("POSTS_TO_FETCH", 50))
 MAX_CHANNELS_PER_SEARCH = int(os.getenv("MAX_CHANNELS_PER_SEARCH", 20))
 SEARCH_QUERIES_COUNT = int(os.getenv("SEARCH_QUERIES_COUNT", 5))
-MIN_QUALIFICATION_SCORE = int(os.getenv("MIN_QUALIFICATION_SCORE", 5))
 
 
 #
@@ -69,18 +68,17 @@ MAX_SESSION_DURATION_MINUTES = int(os.getenv("MAX_SESSION_DURATION_MINUTES", 40)
 FLOODWAIT_EXTRA_SECONDS = 10  # Extra seconds to wait after FloodWaitError
 MAX_FLOODWAIT_RETRIES = 2     # Max retries after FloodWait before stopping
 
-# Message freshness settings (for scoring bonuses)
-MESSAGE_FRESHNESS_DAYS = {
-    "hot": 3,       # Messages < 3 days old get bonus
-    "warm": 7,      # Messages < 7 days are normal
-    "cold": 30,     # Messages > 30 days may be filtered
-}
+# Message age filtering - only consider recent messages
+MESSAGE_MAX_AGE_DAYS = int(os.getenv("MESSAGE_MAX_AGE_DAYS", 10))  # Only messages from last 10 days
 
-# Scoring bonuses for message freshness
-FRESHNESS_SCORE_BONUS = {
-    "has_pain_message": 2,      # Bonus for having message with pain
-    "fresh_message": 1,         # Bonus for message < 3 days
-    "multiple_pain_messages": 1 # Bonus for multiple pain messages
+# Message parsing limits
+MESSAGES_LIMIT = int(os.getenv("MESSAGES_LIMIT", 500))  # Number of recent messages to parse per chat
+
+# Message freshness categories (for display/metadata only, not scoring)
+MESSAGE_FRESHNESS_DAYS = {
+    "hot": 3,       # Messages < 3 days old
+    "warm": 7,      # Messages < 7 days
+    "cold": 30,     # Messages > 30 days
 }
 
 
@@ -96,7 +94,6 @@ DEFAULT_CONFIG = {
         "timeout_seconds": 30
     },
     "qualifier": {
-        "min_score": 5,
         "include_reasoning": True
     },
     "output": {

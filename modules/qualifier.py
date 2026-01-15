@@ -121,35 +121,6 @@ def format_enrichment_data_for_prompt(
     return prompt_text
 
 
-def calculate_freshness_bonus(candidate_data: dict) -> int:
-    """
-    Calculate scoring bonus based on message freshness.
-
-    Returns bonus points to add to the base LLM score.
-    """
-    bonus = 0
-    messages = candidate_data.get("messages_with_metadata", [])
-
-    if not messages:
-        return 0
-
-    # Bonus for having any messages (indicates activity)
-    has_messages = len(messages) > 0
-    if has_messages:
-        bonus += config.FRESHNESS_SCORE_BONUS.get("has_pain_message", 0)
-
-    # Bonus for fresh messages (< 3 days)
-    has_fresh = any(m.get("freshness") == "hot" for m in messages)
-    if has_fresh:
-        bonus += config.FRESHNESS_SCORE_BONUS.get("fresh_message", 0)
-
-    # Bonus for multiple messages (indicates engaged user)
-    if len(messages) >= 3:
-        bonus += config.FRESHNESS_SCORE_BONUS.get("multiple_pain_messages", 0)
-
-    return bonus
-
-
 def get_freshness_summary(candidate_data: dict) -> Dict[str, Any]:
     """Get summary of message freshness for the lead card."""
     messages = candidate_data.get("messages_with_metadata", [])
@@ -249,27 +220,45 @@ def qualify_lead(
         parsed_response = json.loads(json_response_str)
         logger.info(f"Successfully parsed LLM response for @{username}")
 
-        # Calculate freshness bonus
-        freshness_bonus = calculate_freshness_bonus(candidate_data)
+        # Get freshness summary for metadata (display only)
         freshness_summary = get_freshness_summary(candidate_data)
 
-        # Get base score from LLM
-        base_score = 0
+        # Get score from LLM (no bonuses applied)
         qualification = parsed_response.get("qualification", {})
         if isinstance(qualification, dict):
-            base_score = qualification.get("score", 0)
+            llm_score = qualification.get("score", 0)
+        else:
+            llm_score = 0
 
-        # Apply bonus (cap at 10)
-        final_score = min(10, base_score + freshness_bonus)
+        # Apply penalty for vague/uncertain reasoning
+        reasoning = qualification.get("reasoning", "").lower()
+        vague_indicators = [
+            "нет болей", "нет прямых болей", "не видно болей",
+            "боли предполагаемые", "боли не очевидны",
+            "типичные боли", "вероятные боли", "косвенные боли",
+            "мало информации", "активность минимальна",
+            "предположительно", "вероятно"
+        ]
 
-        # Update the qualification result with adjusted score
+        has_vague_reasoning = any(indicator in reasoning for indicator in vague_indicators)
+        final_score = llm_score
+
+        if has_vague_reasoning:
+            # Cap score at 6 if reasoning is vague/uncertain
+            final_score = min(final_score, 6)
+            logger.info(
+                f"Capping score at 6 for @{candidate_data.get('username')} "
+                f"due to vague reasoning: {reasoning[:100]}"
+            )
+
+        # Update the qualification result with final score
         if isinstance(qualification, dict):
-            qualification["base_score"] = base_score
-            qualification["freshness_bonus"] = freshness_bonus
+            qualification["llm_score"] = llm_score
             qualification["score"] = final_score
+            qualification["has_vague_reasoning"] = has_vague_reasoning
             parsed_response["qualification"] = qualification
 
-        # Add freshness metadata
+        # Add freshness metadata (for display, not scoring)
         parsed_response["freshness_summary"] = freshness_summary
 
         return {
@@ -292,6 +281,108 @@ def qualify_lead(
             f"An error occurred during lead qualification for @{username}: {e}"
         )
         return {"error": str(e)}
+
+
+def load_batch_analysis_prompt() -> str:
+    """Loads the batch chat analysis prompt from the file."""
+    try:
+        with open('prompts/chat_batch_analysis.txt', 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.error(
+            "Batch analysis prompt file not found at 'prompts/chat_batch_analysis.txt'"
+        )
+        return ""
+
+
+def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Analyzes an entire chat's messages in one LLM call to identify potential leads.
+
+    This is the first stage of two-stage qualification:
+    1. Batch screening (this function) - identifies candidates with pain/problems
+    2. Detailed analysis (qualify_lead) - full qualification of selected candidates
+
+    Args:
+        messages: List of message dictionaries with keys:
+            - username: str (e.g., "@username")
+            - text: str (message text)
+            - date: str (ISO format date)
+            - messages_count: int (total messages from this user)
+
+    Returns:
+        Dictionary with:
+        - potential_leads: List[Dict] with username, priority, pain_summary, etc.
+        - filtering_stats: Dict with analysis statistics
+        - error: str (if error occurred)
+    """
+    if not llm:
+        return {"error": "LLM client is not initialized.", "potential_leads": []}
+
+    prompt_template = load_batch_analysis_prompt()
+    if not prompt_template:
+        return {
+            "error": "Could not load batch analysis prompt.",
+            "potential_leads": []
+        }
+
+    # Format messages for the prompt
+    messages_json = json.dumps(messages, ensure_ascii=False, indent=2)
+
+    system_message = SystemMessage(
+        content=(
+            "You are a business analyst expert in B2B lead identification. "
+            "Analyze the provided chat messages and identify potential leads "
+            "for Telegram bot development services. "
+            "Return ONLY valid JSON as specified in the prompt."
+        )
+    )
+    human_message = HumanMessage(
+        content=f"{prompt_template}\n\nСообщения для анализа:\n{messages_json}"
+    )
+
+    try:
+        logger.info(
+            f"Starting batch analysis of {len(messages)} messages. Waiting for LLM..."
+        )
+
+        start_time = time.time()
+        response = llm.invoke([system_message, human_message])
+        end_time = time.time()
+        duration = end_time - start_time
+
+        logger.info(
+            f"Batch analysis LLM response received. "
+            f"Call duration: {duration:.2f} seconds."
+        )
+
+        # Parse JSON response
+        json_response_str = (
+            response.content.strip()
+            .lstrip("```json")
+            .rstrip("```")
+            .strip()
+        )
+
+        parsed_response = json.loads(json_response_str)
+        logger.info(
+            f"Successfully parsed batch analysis. "
+            f"Found {len(parsed_response.get('potential_leads', []))} potential leads."
+        )
+
+        return parsed_response
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to decode JSON from batch analysis LLM response: {e}")
+        logger.error(f"Raw response content: {response.content[:500]}")
+        return {
+            "error": "JSONDecodeError",
+            "raw_response": response.content,
+            "potential_leads": []
+        }
+    except Exception as e:
+        logger.error(f"An error occurred during batch chat analysis: {e}")
+        return {"error": str(e), "potential_leads": []}
 
 
 if __name__ == '__main__':
