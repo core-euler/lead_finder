@@ -2,8 +2,15 @@
 __pycache__/
 *.pyc
 .env
-# *.session*.session-journal
+# *.session
+*.session-journal
 
 # IDE
 .idea/
 .vscode/
+
+# Project directories
+docs/
+output/
+logs/
+venv/

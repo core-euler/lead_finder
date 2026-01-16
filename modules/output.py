@@ -95,18 +95,14 @@ def format_lead_as_markdown(lead: dict, lead_index: int) -> str:
     has_fresh = lead.get("has_fresh_message", False)
     freshness_summary = qual_result.get("freshness_summary", {})
 
-    # Score info
+    # Score info (0-5 scale)
     score = qual.get('score', 'N/A')
-    base_score = qual.get('base_score')
-    freshness_bonus = qual.get('freshness_bonus', 0)
 
     # Header with score
     md_block = f"## Лид #{lead_index}"
     if has_fresh:
         md_block += " 🔥"  # Hot lead indicator
-    md_block += f" — Оценка: {score}/10"
-    if base_score is not None and freshness_bonus > 0:
-        md_block += f" (базовая: {base_score} + бонус за свежесть: {freshness_bonus})"
+    md_block += f" — Оценка: {score}/5"
     md_block += "\n\n"
 
     # Contact info

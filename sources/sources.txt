@@ -1,2 +1,0 @@
-# Test chat for v2 pipeline
-@marketplace_pro

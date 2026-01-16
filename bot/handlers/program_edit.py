@@ -39,11 +39,11 @@ def get_settings_keyboard(program_id: int, min_score: int, max_leads: int, enric
     builder = InlineKeyboardBuilder()
 
     # Min score buttons
-    for score in [3, 4, 5, 6, 7, 8]:
+    for score in [1, 2, 3, 4, 5]:
         marker = "✅" if score == min_score else ""
         builder.button(text=f"{score}{marker}", callback_data=f"set_score_{program_id}_{score}")
 
-    builder.adjust(6)  # All scores in one row
+    builder.adjust(5)  # All scores in one row
 
     # Max leads buttons
     for count in [10, 20, 50]:
@@ -60,7 +60,7 @@ def get_settings_keyboard(program_id: int, min_score: int, max_leads: int, enric
     builder.button(text="✅ Сохранить", callback_data=f"save_settings_{program_id}")
     builder.button(text="◀️ Назад", callback_data=f"edit_program_{program_id}")
 
-    builder.adjust(6, 3, 1, 1, 1)
+    builder.adjust(5, 3, 1, 1, 1)
 
     return builder.as_markup()
 

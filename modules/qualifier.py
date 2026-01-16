@@ -223,39 +223,58 @@ def qualify_lead(
         # Get freshness summary for metadata (display only)
         freshness_summary = get_freshness_summary(candidate_data)
 
-        # Get score from LLM (no bonuses applied)
+        # Get score from LLM
         qualification = parsed_response.get("qualification", {})
         if isinstance(qualification, dict):
             llm_score = qualification.get("score", 0)
         else:
             llm_score = 0
 
-        # Apply penalty for vague/uncertain reasoning
+        # Apply penalty: force score = 0 if LLM indicates we can't solve the problem
         reasoning = qualification.get("reasoning", "").lower()
+
+        # Indicators that we CAN'T solve the problem with our bot
+        cant_solve_indicators = [
+            "не можем решить", "не можем сделать", "не можем закрыть",
+            "не решается ботом", "не решается нашим", "не решается telegram",
+            "не подходит для бота", "бот не может", "бот не решает",
+            "нет api", "недоступен api", "api отсутствует", "нет доступа к api",
+            "нет интеграции", "недоступна интеграция",
+            "методологическая проблема", "бухгалтерская проблема",
+            "не процесс", "не решается через", "недоступных api",
+            "нужна интеграция с", "требует интеграции с",
+            "нет конкретной боли", "не выявлено конкретной боли",
+            "боли не выявлено", "боли отсутствуют"
+        ]
+
+        # Indicators that pain is vague/assumed (should also be score 0)
         vague_indicators = [
             "нет болей", "нет прямых болей", "не видно болей",
             "боли предполагаемые", "боли не очевидны",
             "типичные боли", "вероятные боли", "косвенные боли",
-            "мало информации", "активность минимальна",
-            "предположительно", "вероятно"
+            "боли типичные для", "предположительно", "вероятно владелец"
         ]
 
+        has_cant_solve = any(indicator in reasoning for indicator in cant_solve_indicators)
         has_vague_reasoning = any(indicator in reasoning for indicator in vague_indicators)
+
         final_score = llm_score
 
-        if has_vague_reasoning:
-            # Cap score at 6 if reasoning is vague/uncertain
-            final_score = min(final_score, 6)
+        if has_cant_solve or has_vague_reasoning:
+            # Force score to 0 if we can't solve or pain is vague
+            final_score = 0
             logger.info(
-                f"Capping score at 6 for @{candidate_data.get('username')} "
-                f"due to vague reasoning: {reasoning[:100]}"
+                f"Forcing score to 0 for @{candidate_data.get('username')} "
+                f"due to: {'cant_solve' if has_cant_solve else 'vague_reasoning'}. "
+                f"Reasoning: {reasoning[:150]}"
             )
 
         # Update the qualification result with final score
         if isinstance(qualification, dict):
             qualification["llm_score"] = llm_score
             qualification["score"] = final_score
-            qualification["has_vague_reasoning"] = has_vague_reasoning
+            qualification["penalty_applied"] = has_cant_solve or has_vague_reasoning
+            qualification["penalty_reason"] = "cant_solve" if has_cant_solve else ("vague" if has_vague_reasoning else None)
             parsed_response["qualification"] = qualification
 
         # Add freshness metadata (for display, not scoring)

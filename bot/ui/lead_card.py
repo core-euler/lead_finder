@@ -26,7 +26,7 @@ def format_lead_card(lead: Lead, index: int, total: int) -> str:
         f"Программа: {program_name}\n"
         f"━━━━━━━━━━━━━\n\n"
         f"👤 @{lead.telegram_username}\n"
-        f"⭐ Оценка: {lead.qualification_score}/10\n"
+        f"⭐ Оценка: {lead.qualification_score}/5\n"
     )
 
     # Add reasoning if available
