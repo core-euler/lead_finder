@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 .env
-# *.session
+*.session
 *.session-journal
 
 # IDE
@@ -10,8 +10,7 @@ __pycache__/
 .vscode/
 
 # Project directories
-docs/
+# docs/
 output/
 logs/
 venv/
-lead_finder_session.session
