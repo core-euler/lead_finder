@@ -54,6 +54,24 @@ def _parse_llm_json(raw: str) -> dict:
     return json.loads(text)
 
 
+def _render_prompt(
+    template: str,
+    *,
+    existing_clusters: str,
+    new_pains: str,
+) -> str:
+    """Render prompt by replacing only known placeholders.
+
+    We intentionally avoid str.format() because prompt templates contain JSON
+    examples with many curly braces.
+    """
+    return (
+        template
+        .replace("{existing_clusters}", existing_clusters)
+        .replace("{new_pains}", new_pains)
+    )
+
+
 async def _update_cluster_stats(cluster_id: int, session: AsyncSession) -> None:
     """Recalculate pain_count, avg_intensity, first_seen, last_seen, and trend."""
     pains_result = await session.execute(
@@ -156,7 +174,8 @@ async def cluster_new_pains(program_id: int, session: AsyncSession) -> int:
     )
 
     prompt_template = _load_prompt()
-    prompt = prompt_template.format(
+    prompt = _render_prompt(
+        prompt_template,
         existing_clusters=clusters_text,
         new_pains=new_pains_text,
     )

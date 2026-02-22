@@ -80,6 +80,30 @@ def _parse_llm_json(raw: str) -> dict:
     return json.loads(text)
 
 
+def _render_prompt(
+    template: str,
+    *,
+    post_type: str,
+    cluster_name: str,
+    cluster_description: str,
+    pain_count: int,
+    sample_quotes: str,
+) -> str:
+    """Render prompt by replacing only known placeholders.
+
+    We intentionally avoid str.format() because prompt templates contain JSON
+    examples with many curly braces.
+    """
+    return (
+        template
+        .replace("{post_type}", post_type)
+        .replace("{cluster_name}", cluster_name)
+        .replace("{cluster_description}", cluster_description)
+        .replace("{pain_count}", str(pain_count))
+        .replace("{sample_quotes}", sample_quotes)
+    )
+
+
 async def generate_post(
     cluster_id: int,
     post_type: str,
@@ -121,7 +145,8 @@ async def generate_post(
 
     post_type_label = _POST_TYPE_LABELS.get(post_type, post_type)
     prompt_template = _load_prompt()
-    prompt = prompt_template.format(
+    prompt = _render_prompt(
+        prompt_template,
         post_type=post_type_label,
         cluster_name=cluster.name,
         cluster_description=cluster.description,

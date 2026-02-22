@@ -55,6 +55,24 @@ def _parse_llm_json(raw: str) -> dict:
     return json.loads(text)
 
 
+def _render_prompt(
+    template: str,
+    *,
+    chat_name: str,
+    messages: str,
+) -> str:
+    """Render prompt by replacing only known placeholders.
+
+    We intentionally avoid str.format() because prompt templates contain JSON
+    examples with many curly braces.
+    """
+    return (
+        template
+        .replace("{chat_name}", chat_name)
+        .replace("{messages}", messages)
+    )
+
+
 async def _extract_pains_batch(
     messages_batch: list[dict],
     chat_name: str,
@@ -70,7 +88,11 @@ async def _extract_pains_batch(
         for i, msg in enumerate(messages_batch)
     ]
     messages_json = json.dumps(formatted, ensure_ascii=False, indent=2)
-    prompt = prompt_template.format(chat_name=chat_name, messages=messages_json)
+    prompt = _render_prompt(
+        prompt_template,
+        chat_name=chat_name,
+        messages=messages_json,
+    )
 
     try:
         response = await _llm.ainvoke([HumanMessage(content=prompt)])
