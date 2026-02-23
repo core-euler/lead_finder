@@ -109,6 +109,7 @@ async def _save_pains_from_lead(
     business_type = _trim(business_type_raw, 100)
 
     inserted = 0
+    seen_keys: set[tuple[int, str, str]] = set()
     raw_user_id = candidate.get("user_id")
     safe_user_id: int | None = None
     if isinstance(raw_user_id, int) and _INT32_MIN <= raw_user_id <= _INT32_MAX:
@@ -128,6 +129,10 @@ async def _save_pains_from_lead(
         if not original_quote:
             continue
 
+        dedup_key = (source_message_id, source_chat, original_quote)
+        if dedup_key in seen_keys:
+            continue
+
         with session.no_autoflush:
             existing_query = select(Pain).where(
                 Pain.source_message_id == source_message_id,
@@ -136,6 +141,7 @@ async def _save_pains_from_lead(
             )
             existing = (await session.execute(existing_query)).scalars().first()
         if existing:
+            seen_keys.add(dedup_key)
             continue
 
         pain = Pain(
@@ -153,6 +159,7 @@ async def _save_pains_from_lead(
             message_date=None,
         )
         session.add(pain)
+        seen_keys.add(dedup_key)
         inserted += 1
 
     if inserted:
@@ -171,6 +178,7 @@ async def run_program_pipeline(
     """
     program_id = program.id
     program_name = program.name
+    program_max_leads = program.max_leads_per_run
     logger.info(
         f"Starting REAL pipeline for program '{program_name}' (ID: {program_id})"
     )
@@ -323,8 +331,10 @@ async def run_program_pipeline(
             )
             await session.rollback()
 
-        if qualified_leads_count >= program.max_leads_per_run:
-            logger.info(f"Reached max leads limit of {program.max_leads_per_run}. Stopping.")
+        if qualified_leads_count >= program_max_leads:
+            logger.info(
+                f"Reached max leads limit of {program_max_leads}. Stopping."
+            )
             break
     
     await session.commit()
