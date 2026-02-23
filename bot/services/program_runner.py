@@ -64,6 +64,16 @@ def _extract_pain_texts(qualification_result: Dict[str, Any]) -> list[str]:
     return pains
 
 
+def _trim(value: Any, limit: int) -> str | None:
+    """Trim string values to DB column limits."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:limit]
+
+
 async def _save_pains_from_lead(
     *,
     program_id: int,
@@ -91,10 +101,12 @@ async def _save_pains_from_lead(
     )
     if source_chat:
         source_chat = str(source_chat).lstrip("@")
+    source_chat = _trim(source_chat, 100) or ""
 
-    business_type = (
+    business_type_raw = (
         (qualification_result.get("identification") or {}).get("business_type")
     )
+    business_type = _trim(business_type_raw, 100)
 
     inserted = 0
     raw_user_id = candidate.get("user_id")
@@ -116,12 +128,13 @@ async def _save_pains_from_lead(
         if not original_quote:
             continue
 
-        existing_query = select(Pain).where(
-            Pain.source_message_id == source_message_id,
-            Pain.source_chat == source_chat,
-            Pain.original_quote == original_quote,
-        )
-        existing = (await session.execute(existing_query)).scalars().first()
+        with session.no_autoflush:
+            existing_query = select(Pain).where(
+                Pain.source_message_id == source_message_id,
+                Pain.source_chat == source_chat,
+                Pain.original_quote == original_quote,
+            )
+            existing = (await session.execute(existing_query)).scalars().first()
         if existing:
             continue
 
@@ -134,9 +147,9 @@ async def _save_pains_from_lead(
             business_type=business_type,
             source_chat=source_chat,
             source_message_id=source_message_id,
-            source_message_link=msg.get("link"),
+            source_message_link=_trim(msg.get("link"), 255),
             source_user_id=safe_user_id,
-            source_username=candidate.get("username"),
+            source_username=_trim(candidate.get("username"), 100),
             message_date=None,
         )
         session.add(pain)
@@ -157,8 +170,9 @@ async def run_program_pipeline(
     Runs the full lead-finding pipeline, sending leads in real-time via a callback.
     """
     program_id = program.id
+    program_name = program.name
     logger.info(
-        f"Starting REAL pipeline for program '{program.name}' (ID: {program_id})"
+        f"Starting REAL pipeline for program '{program_name}' (ID: {program_id})"
     )
     
     sources = [chat.chat_username for chat in program.chats]
@@ -261,7 +275,9 @@ async def run_program_pipeline(
             for key, value in lead_data.items():
                 setattr(lead, key, value)
         else:
-            logger.info(f"Creating new lead for @{username} with program_id={program.id}")
+            logger.info(
+                f"Creating new lead for @{username} with program_id={program_id}"
+            )
             lead = Lead(
                 program_id=program_id,
                 telegram_username=username,
@@ -277,6 +293,18 @@ async def run_program_pipeline(
         # Commit immediately so the lead is available in the database
         # for the user to click on
         await session.commit()
+
+        # DEBUG: Verify the lead is actually in the database
+        verification_query = select(func.count(Lead.id)).where(
+            Lead.program_id == program_id
+        )
+        verified_count = (await session.execute(verification_query)).scalar_one()
+        logger.info(
+            f"After commit: Total leads for program_id={program_id}: {verified_count}"
+        )
+
+        if on_lead_found:
+            await on_lead_found(lead)
 
         # Save pains directly from qualified/saved leads (no heavy full-chat pass)
         try:
@@ -295,18 +323,6 @@ async def run_program_pipeline(
             )
             await session.rollback()
 
-        # DEBUG: Verify the lead is actually in the database
-        verification_query = select(func.count(Lead.id)).where(
-            Lead.program_id == program_id
-        )
-        verified_count = (await session.execute(verification_query)).scalar_one()
-        logger.info(
-            f"After commit: Total leads for program_id={program_id}: {verified_count}"
-        )
-
-        if on_lead_found:
-            await on_lead_found(lead)
-
         if qualified_leads_count >= program.max_leads_per_run:
             logger.info(f"Reached max leads limit of {program.max_leads_per_run}. Stopping.")
             break
@@ -318,10 +334,13 @@ async def run_program_pipeline(
         Lead.program_id == program_id
     )
     final_count = (await session.execute(final_count_query)).scalar_one()
-    logger.info(f"Pipeline complete for program '{program.name}'. Final lead count in DB: {final_count}")
+    logger.info(
+        f"Pipeline complete for program '{program_name}'. "
+        f"Final lead count in DB: {final_count}"
+    )
 
     return {
-        "program_name": program.name, "candidates_found": total_candidates,
+        "program_name": program_name, "candidates_found": total_candidates,
         "leads_qualified": qualified_leads_count,
         "pains_saved": pains_saved_count,
     }
