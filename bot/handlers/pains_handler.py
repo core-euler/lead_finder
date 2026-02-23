@@ -34,14 +34,16 @@ _DRAFTS_PAGE_SIZE = 5
 
 # --- Helper ---
 
-async def _get_program_id_for_user(user_id: int, session: AsyncSession) -> int | None:
-    """Return the first program owned by this user, or None."""
+async def _get_program_ids_for_user(
+    user_id: int, session: AsyncSession
+) -> list[int]:
+    """Return all program IDs owned by this user."""
     from bot.models.program import Program
+
     result = await session.execute(
-        select(Program.id).where(Program.owner_chat_id == user_id).limit(1)
+        select(Program.id).where(Program.owner_chat_id == user_id)
     )
-    row = result.first()
-    return row[0] if row else None
+    return [row[0] for row in result.all()]
 
 
 # --- Main Pains Menu ---
@@ -49,9 +51,9 @@ async def _get_program_id_for_user(user_id: int, session: AsyncSession) -> int |
 @router.callback_query(F.data == "pains_menu")
 async def pains_menu_handler(callback: CallbackQuery, session: AsyncSession) -> None:
     """Display the Pains & Content main screen with aggregate stats."""
-    program_id = await _get_program_id_for_user(callback.from_user.id, session)
+    program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
 
-    if program_id is None:
+    if not program_ids:
         await callback.message.edit_text(
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
             reply_markup=get_main_menu_keyboard(),
@@ -61,14 +63,14 @@ async def pains_menu_handler(callback: CallbackQuery, session: AsyncSession) -> 
 
     total_pains = (
         await session.execute(
-            select(func.count(Pain.id)).where(Pain.program_id == program_id)
+            select(func.count(Pain.id)).where(Pain.program_id.in_(program_ids))
         )
     ).scalar_one()
 
     total_clusters = (
         await session.execute(
             select(func.count(PainCluster.id)).where(
-                PainCluster.program_id == program_id
+                PainCluster.program_id.in_(program_ids)
             )
         )
     ).scalar_one()
@@ -77,7 +79,7 @@ async def pains_menu_handler(callback: CallbackQuery, session: AsyncSession) -> 
         await session.execute(
             select(func.count(GeneratedPost.id))
             .join(PainCluster, GeneratedPost.cluster_id == PainCluster.id)
-            .where(PainCluster.program_id == program_id)
+            .where(PainCluster.program_id.in_(program_ids))
         )
     ).scalar_one()
 
@@ -91,10 +93,18 @@ async def pains_menu_handler(callback: CallbackQuery, session: AsyncSession) -> 
 @router.callback_query(F.data == "top_pains")
 async def top_pains_handler(callback: CallbackQuery, session: AsyncSession) -> None:
     """Show top-5 clusters ranked by score formula."""
-    program_id = await _get_program_id_for_user(callback.from_user.id, session)
+    program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
+
+    if not program_ids:
+        await callback.message.edit_text(
+            "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
+            reply_markup=get_main_menu_keyboard(),
+        )
+        await callback.answer()
+        return
 
     clusters_result = await session.execute(
-        select(PainCluster).where(PainCluster.program_id == program_id)
+        select(PainCluster).where(PainCluster.program_id.in_(program_ids))
     )
     clusters = clusters_result.scalars().all()
     ranked = sorted(clusters, key=cluster_score, reverse=True)[:5]
@@ -176,10 +186,18 @@ async def generate_post_menu_handler(
     callback: CallbackQuery, session: AsyncSession
 ) -> None:
     """Show the top clusters for post generation selection."""
-    program_id = await _get_program_id_for_user(callback.from_user.id, session)
+    program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
+
+    if not program_ids:
+        await callback.message.edit_text(
+            "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
+            reply_markup=get_main_menu_keyboard(),
+        )
+        await callback.answer()
+        return
 
     clusters_result = await session.execute(
-        select(PainCluster).where(PainCluster.program_id == program_id)
+        select(PainCluster).where(PainCluster.program_id.in_(program_ids))
     )
     clusters = clusters_result.scalars().all()
     ranked = sorted(clusters, key=cluster_score, reverse=True)[:5]
@@ -272,12 +290,19 @@ async def my_drafts_handler(callback: CallbackQuery, session: AsyncSession) -> N
     parts = callback.data.split("_")
     page = int(parts[2]) if len(parts) > 2 else 0
 
-    program_id = await _get_program_id_for_user(callback.from_user.id, session)
+    program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
+    if not program_ids:
+        await callback.message.edit_text(
+            "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
+            reply_markup=get_main_menu_keyboard(),
+        )
+        await callback.answer()
+        return
 
     posts_result = await session.execute(
         select(GeneratedPost)
         .join(PainCluster, GeneratedPost.cluster_id == PainCluster.id)
-        .where(PainCluster.program_id == program_id)
+        .where(PainCluster.program_id.in_(program_ids))
         .order_by(GeneratedPost.generated_at.desc())
     )
     posts = posts_result.scalars().all()
