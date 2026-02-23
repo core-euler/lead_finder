@@ -45,9 +45,14 @@ async def my_programs_handler(callback: CallbackQuery, session: AsyncSession):
     else:
         text = "📋 Мои программы\n\n"
         for i, program in enumerate(programs):
+            schedule_status = (
+                f"⏰ {program.schedule_time}"
+                if program.owner_chat_id is not None else
+                "⏸ выключено"
+            )
             text += (
                 f"{i+1}️⃣ {program.name}\n"
-                f"   {len(program.chats)} чата(ов) • скор ≥{program.min_score} • ⏰ {program.schedule_time}\n"
+                f"   {len(program.chats)} чата(ов) • скор ≥{program.min_score} • {schedule_status}\n"
                 f"   Последний запуск: сегодня, 0 лидов (TODO)\n\n" # TODO: Implement last run logic
             )
 

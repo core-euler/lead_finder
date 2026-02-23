@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from bot.models.program import Program, ProgramChat
+from bot.scheduler import schedule_program_job, remove_program_job
 from bot.states import ProgramEdit
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,13 @@ def get_back_keyboard(program_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_settings_keyboard(program_id: int, min_score: int, max_leads: int, enrich: bool) -> InlineKeyboardMarkup:
+def get_settings_keyboard(
+    program_id: int,
+    min_score: int,
+    max_leads: int,
+    enrich: bool,
+    auto_collect: bool,
+) -> InlineKeyboardMarkup:
     """Creates settings edit keyboard."""
     builder = InlineKeyboardBuilder()
 
@@ -55,12 +62,21 @@ def get_settings_keyboard(program_id: int, min_score: int, max_leads: int, enric
     # Web enrichment toggle
     enrich_text = "Web-обогащение: Вкл ✅" if enrich else "Web-обогащение: Выкл"
     builder.button(text=enrich_text, callback_data=f"toggle_enrich_{program_id}")
+    auto_collect_text = (
+        "Автосбор по расписанию: Вкл ✅"
+        if auto_collect else
+        "Автосбор по расписанию: Выкл"
+    )
+    builder.button(
+        text=auto_collect_text,
+        callback_data=f"toggle_autocollect_{program_id}",
+    )
 
     # Save button
     builder.button(text="✅ Сохранить", callback_data=f"save_settings_{program_id}")
     builder.button(text="◀️ Назад", callback_data=f"edit_program_{program_id}")
 
-    builder.adjust(5, 3, 1, 1, 1)
+    builder.adjust(5, 3, 1, 1, 1, 1)
 
     return builder.as_markup()
 
@@ -294,17 +310,26 @@ async def edit_settings_show(callback: CallbackQuery, session: AsyncSession, sta
         program_id=program_id,
         min_score=program.min_score,
         max_leads=program.max_leads_per_run,
-        enrich=program.enrich
+        enrich=program.enrich,
+        auto_collect=program.owner_chat_id is not None,
     )
 
     text = (
         f"⚙️ Настройки программы: {program.name}\n\n"
         f"Минимальный скор: {program.min_score}\n"
         f"Лидов за запуск: {program.max_leads_per_run}\n"
-        f"Web-обогащение: {'Вкл' if program.enrich else 'Выкл'}"
+        f"Web-обогащение: {'Вкл' if program.enrich else 'Выкл'}\n"
+        f"Автосбор по расписанию: "
+        f"{'Вкл' if program.owner_chat_id is not None else 'Выкл'}"
     )
 
-    keyboard = get_settings_keyboard(program_id, program.min_score, program.max_leads_per_run, program.enrich)
+    keyboard = get_settings_keyboard(
+        program_id,
+        program.min_score,
+        program.max_leads_per_run,
+        program.enrich,
+        program.owner_chat_id is not None,
+    )
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
@@ -323,10 +348,18 @@ async def set_min_score(callback: CallbackQuery, state: FSMContext):
         f"⚙️ Настройки программы\n\n"
         f"Минимальный скор: {new_score}\n"
         f"Лидов за запуск: {data.get('max_leads', 20)}\n"
-        f"Web-обогащение: {'Вкл' if data.get('enrich', False) else 'Выкл'}"
+        f"Web-обогащение: {'Вкл' if data.get('enrich', False) else 'Выкл'}\n"
+        f"Автосбор по расписанию: "
+        f"{'Вкл' if data.get('auto_collect', True) else 'Выкл'}"
     )
 
-    keyboard = get_settings_keyboard(program_id, new_score, data.get('max_leads', 20), data.get('enrich', False))
+    keyboard = get_settings_keyboard(
+        program_id,
+        new_score,
+        data.get('max_leads', 20),
+        data.get('enrich', False),
+        data.get('auto_collect', True),
+    )
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
@@ -345,10 +378,18 @@ async def set_max_leads(callback: CallbackQuery, state: FSMContext):
         f"⚙️ Настройки программы\n\n"
         f"Минимальный скор: {data.get('min_score', 5)}\n"
         f"Лидов за запуск: {new_max}\n"
-        f"Web-обогащение: {'Вкл' if data.get('enrich', False) else 'Выкл'}"
+        f"Web-обогащение: {'Вкл' if data.get('enrich', False) else 'Выкл'}\n"
+        f"Автосбор по расписанию: "
+        f"{'Вкл' if data.get('auto_collect', True) else 'Выкл'}"
     )
 
-    keyboard = get_settings_keyboard(program_id, data.get('min_score', 5), new_max, data.get('enrich', False))
+    keyboard = get_settings_keyboard(
+        program_id,
+        data.get('min_score', 5),
+        new_max,
+        data.get('enrich', False),
+        data.get('auto_collect', True),
+    )
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
@@ -366,10 +407,46 @@ async def toggle_enrichment(callback: CallbackQuery, state: FSMContext):
         f"⚙️ Настройки программы\n\n"
         f"Минимальный скор: {data.get('min_score', 5)}\n"
         f"Лидов за запуск: {data.get('max_leads', 20)}\n"
-        f"Web-обогащение: {'Вкл' if new_enrich else 'Выкл'}"
+        f"Web-обогащение: {'Вкл' if new_enrich else 'Выкл'}\n"
+        f"Автосбор по расписанию: "
+        f"{'Вкл' if data.get('auto_collect', True) else 'Выкл'}"
     )
 
-    keyboard = get_settings_keyboard(program_id, data.get('min_score', 5), data.get('max_leads', 20), new_enrich)
+    keyboard = get_settings_keyboard(
+        program_id,
+        data.get('min_score', 5),
+        data.get('max_leads', 20),
+        new_enrich,
+        data.get('auto_collect', True),
+    )
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("toggle_autocollect_"))
+async def toggle_auto_collect(callback: CallbackQuery, state: FSMContext):
+    """Toggles scheduled auto-collection setting."""
+    program_id = int(callback.data.split("_")[-1])
+
+    data = await state.get_data()
+    new_auto_collect = not data.get('auto_collect', True)
+    await state.update_data(auto_collect=new_auto_collect)
+
+    text = (
+        f"⚙️ Настройки программы\n\n"
+        f"Минимальный скор: {data.get('min_score', 5)}\n"
+        f"Лидов за запуск: {data.get('max_leads', 20)}\n"
+        f"Web-обогащение: {'Вкл' if data.get('enrich', False) else 'Выкл'}\n"
+        f"Автосбор по расписанию: {'Вкл' if new_auto_collect else 'Выкл'}"
+    )
+
+    keyboard = get_settings_keyboard(
+        program_id,
+        data.get('min_score', 5),
+        data.get('max_leads', 20),
+        data.get('enrich', False),
+        new_auto_collect,
+    )
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
@@ -387,6 +464,14 @@ async def save_settings(callback: CallbackQuery, state: FSMContext, session: Asy
         program.min_score = data.get('min_score', 5)
         program.max_leads_per_run = data.get('max_leads', 20)
         program.enrich = data.get('enrich', False)
+        auto_collect = data.get('auto_collect', program.owner_chat_id is not None)
+        if auto_collect:
+            owner_chat_id = program.owner_chat_id or callback.from_user.id
+            program.owner_chat_id = owner_chat_id
+            schedule_program_job(program.id, owner_chat_id, program.schedule_time)
+        else:
+            program.owner_chat_id = None
+            remove_program_job(program.id)
         await session.commit()
 
     await state.clear()

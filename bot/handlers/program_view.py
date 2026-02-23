@@ -72,6 +72,12 @@ async def show_program_handler(callback: CallbackQuery, session: AsyncSession):
     logger.info(f"All leads in database: {all_leads}")
 
     chats_list_str = "\n".join([f"• @{chat.chat_username}" for chat in program.chats]) if program.chats else "Нет чатов."
+    schedule_status = "✅" if program.owner_chat_id is not None else "❌"
+    schedule_label = (
+        f"ежедневно в {program.schedule_time}"
+        if program.owner_chat_id is not None else
+        "выключено"
+    )
     text = (
         f"📁 {program.name}\n\n"
         f"Ниша: {program.niche_description}\n\n"
@@ -80,7 +86,7 @@ async def show_program_handler(callback: CallbackQuery, session: AsyncSession):
         f"• Минимальный скор: {program.min_score}\n"
         f"• Лидов за запуск: макс {program.max_leads_per_run}\n"
         f"• Web-обогащение: {'вкл' if program.enrich else 'выкл'}\n"
-        f"• Расписание: ежедневно в {program.schedule_time} ✅\n\n"
+        f"• Расписание: {schedule_label} {schedule_status}\n\n"
         f"Статистика:\n"
         f"• Всего найдено: {leads_count} лидов\n"
     )
