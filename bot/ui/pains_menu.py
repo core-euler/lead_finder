@@ -42,16 +42,28 @@ def get_pains_menu_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_top_pains_keyboard(clusters: list[PainCluster]) -> InlineKeyboardMarkup:
-    """Keyboard for the top-pains list: one button per cluster + back."""
+def get_top_pains_keyboard(
+    clusters: list[PainCluster], page: int, total_pages: int, mode: str = "top"
+) -> InlineKeyboardMarkup:
+    """Keyboard for paginated pains list with cluster buttons + navigation."""
     builder = InlineKeyboardBuilder()
     for c in clusters:
         builder.button(
             text=f"#{c.id} {c.name[:40]} (×{c.pain_count})",
             callback_data=f"cluster_detail_{c.id}",
         )
+    nav = []
+    if page > 0:
+        nav.append(("◀️", f"{mode}_pains_{page - 1}"))
+    if page < total_pages - 1:
+        nav.append(("▶️", f"{mode}_pains_{page + 1}"))
+    for text, cb in nav:
+        builder.button(text=text, callback_data=cb)
     builder.button(text="◀️ Назад", callback_data="pains_menu")
-    builder.adjust(1)
+    if nav:
+        builder.adjust(1, len(nav), 1)
+    else:
+        builder.adjust(1)
     return builder.as_markup()
 
 
@@ -145,12 +157,21 @@ def format_pains_summary(
     )
 
 
-def format_top_pains(clusters: list[PainCluster]) -> str:
-    """Format top-5 clusters list."""
+def format_top_pains(
+    clusters: list[PainCluster],
+    page: int = 0,
+    total_pages: int = 1,
+    total_clusters: int = 0,
+) -> str:
+    """Format a paginated clusters list."""
     if not clusters:
-        return "📊 Топ болей\n\nПока нет данных. Запустите программу, чтобы собрать боли."
+        return "📊 Боли\n\nПока нет данных. Запустите программу, чтобы собрать боли."
 
-    lines = ["📊 Топ болей\n"]
+    lines = [
+        "📊 Боли\n",
+        f"Всего кластеров: {total_clusters}",
+        f"Страница: {page + 1}/{total_pages}\n",
+    ]
     for i, c in enumerate(clusters, 1):
         trend = _TREND_LABEL.get(c.trend, "➡️ Стабильно")
         intensity = _INTENSITY_LABEL.get(

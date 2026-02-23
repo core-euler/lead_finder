@@ -30,6 +30,7 @@ router = Router()
 
 _QUOTES_PAGE_SIZE = 5
 _DRAFTS_PAGE_SIZE = 5
+_CLUSTERS_PAGE_SIZE = 10
 
 
 # --- Helper ---
@@ -91,8 +92,12 @@ async def pains_menu_handler(callback: CallbackQuery, session: AsyncSession) -> 
 # --- Top Pains ---
 
 @router.callback_query(F.data == "top_pains")
+@router.callback_query(F.data.startswith("top_pains_"))
 async def top_pains_handler(callback: CallbackQuery, session: AsyncSession) -> None:
-    """Show top-5 clusters ranked by score formula."""
+    """Show all clusters ranked by score formula with pagination."""
+    parts = callback.data.split("_")
+    page = int(parts[2]) if len(parts) > 2 else 0
+
     program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
 
     if not program_ids:
@@ -107,12 +112,35 @@ async def top_pains_handler(callback: CallbackQuery, session: AsyncSession) -> N
         select(PainCluster).where(PainCluster.program_id.in_(program_ids))
     )
     clusters = clusters_result.scalars().all()
-    ranked = sorted(clusters, key=cluster_score, reverse=True)[:5]
+    ranked = sorted(clusters, key=cluster_score, reverse=True)
 
-    text = format_top_pains(ranked)
+    if not ranked:
+        text = format_top_pains([])
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_top_pains_keyboard([], 0, 1),
+            disable_web_page_preview=True,
+        )
+        await callback.answer()
+        return
+
+    total = len(ranked)
+    total_pages = (total + _CLUSTERS_PAGE_SIZE - 1) // _CLUSTERS_PAGE_SIZE
+    page = max(0, min(page, total_pages - 1))
+    start = page * _CLUSTERS_PAGE_SIZE
+    page_clusters = ranked[start : start + _CLUSTERS_PAGE_SIZE]
+
+    text = format_top_pains(
+        page_clusters,
+        page=page,
+        total_pages=total_pages,
+        total_clusters=total,
+    )
     await callback.message.edit_text(
         text,
-        reply_markup=get_top_pains_keyboard(ranked),
+        reply_markup=get_top_pains_keyboard(
+            page_clusters, page, total_pages, mode="top"
+        ),
         disable_web_page_preview=True,
     )
     await callback.answer()
@@ -182,10 +210,14 @@ async def cluster_quotes_handler(callback: CallbackQuery, session: AsyncSession)
 # --- Generate Post — Select Type ---
 
 @router.callback_query(F.data == "generate_post_menu")
+@router.callback_query(F.data.startswith("generate_pains_"))
 async def generate_post_menu_handler(
     callback: CallbackQuery, session: AsyncSession
 ) -> None:
-    """Show the top clusters for post generation selection."""
+    """Show all clusters for post generation selection with pagination."""
+    parts = callback.data.split("_")
+    page = int(parts[2]) if len(parts) > 2 else 0
+
     program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
 
     if not program_ids:
@@ -200,7 +232,7 @@ async def generate_post_menu_handler(
         select(PainCluster).where(PainCluster.program_id.in_(program_ids))
     )
     clusters = clusters_result.scalars().all()
-    ranked = sorted(clusters, key=cluster_score, reverse=True)[:5]
+    ranked = sorted(clusters, key=cluster_score, reverse=True)
 
     if not ranked:
         await callback.message.edit_text(
@@ -210,10 +242,26 @@ async def generate_post_menu_handler(
         await callback.answer()
         return
 
-    text = "✍️ Выберите кластер для генерации поста:\n\n" + format_top_pains(ranked)
+    total = len(ranked)
+    total_pages = (total + _CLUSTERS_PAGE_SIZE - 1) // _CLUSTERS_PAGE_SIZE
+    page = max(0, min(page, total_pages - 1))
+    start = page * _CLUSTERS_PAGE_SIZE
+    page_clusters = ranked[start : start + _CLUSTERS_PAGE_SIZE]
+
+    text = (
+        "✍️ Выберите кластер для генерации поста:\n\n"
+        + format_top_pains(
+            page_clusters,
+            page=page,
+            total_pages=total_pages,
+            total_clusters=total,
+        )
+    )
     await callback.message.edit_text(
         text,
-        reply_markup=get_top_pains_keyboard(ranked),
+        reply_markup=get_top_pains_keyboard(
+            page_clusters, page, total_pages, mode="generate"
+        ),
         disable_web_page_preview=True,
     )
     await callback.answer()
