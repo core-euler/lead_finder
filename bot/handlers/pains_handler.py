@@ -19,7 +19,6 @@ from bot.ui.pains_menu import (
     get_pains_menu_keyboard,
     get_top_pains_keyboard,
     get_cluster_keyboard,
-    get_post_type_keyboard,
     get_draft_keyboard,
     get_drafts_list_keyboard,
     get_quotes_keyboard,
@@ -31,6 +30,7 @@ router = Router()
 _QUOTES_PAGE_SIZE = 5
 _DRAFTS_PAGE_SIZE = 5
 _CLUSTERS_PAGE_SIZE = 10
+_UNIFIED_POST_TYPE = "single"
 
 
 # --- Helper ---
@@ -273,23 +273,36 @@ async def generate_post_menu_handler(
 async def generate_post_choose_type(
     callback: CallbackQuery, session: AsyncSession
 ) -> None:
-    """Show post type selection for a specific cluster."""
+    """Generate post for a specific cluster using unified single post type."""
+    await callback.answer()
     cluster_id = int(callback.data.split("_")[-1])
     cluster = await session.get(PainCluster, cluster_id)
     if not cluster:
         await callback.answer("Кластер не найден.", show_alert=True)
         return
 
-    text = (
-        f"✍️ Генерация поста\n\n"
-        f"Кластер: {cluster.name}\n"
-        f"Упоминаний: {cluster.pain_count}\n\n"
-        "Выберите тип поста:"
-    )
+    await callback.message.edit_text("⏳ Генерирую черновик поста...")
+
+    from modules.content_generator import generate_post
+
+    try:
+        post = await generate_post(
+            cluster_id, session, post_type=_UNIFIED_POST_TYPE
+        )
+    except Exception as e:
+        logger.error(f"Content generation failed for cluster_id={cluster_id}: {e}")
+        await callback.message.edit_text(
+            "❌ Ошибка при генерации поста. Попробуйте позже.",
+            reply_markup=get_cluster_keyboard(cluster_id),
+        )
+        return
+
+    text = format_draft(post, cluster.name)
     await callback.message.edit_text(
-        text, reply_markup=get_post_type_keyboard(cluster_id)
+        text,
+        reply_markup=get_draft_keyboard(post.id, cluster_id),
+        parse_mode="HTML",
     )
-    await callback.answer()
 
 
 # --- Generate Post — Execute ---
@@ -298,13 +311,12 @@ async def generate_post_choose_type(
 async def generate_post_execute(
     callback: CallbackQuery, session: AsyncSession
 ) -> None:
-    """Generate a post draft for the selected cluster and type."""
+    """Backward-compatible handler: generate post in unified mode."""
     # Acknowledge callback immediately to avoid Telegram 30s timeout while
     # web search + LLM generation is running.
     await callback.answer()
 
     parts = callback.data.split("_")
-    post_type = parts[1]
     cluster_id = int(parts[2])
 
     cluster = await session.get(PainCluster, cluster_id)
@@ -317,7 +329,9 @@ async def generate_post_execute(
     from modules.content_generator import generate_post
 
     try:
-        post = await generate_post(cluster_id, post_type, session)
+        post = await generate_post(
+            cluster_id, session, post_type=_UNIFIED_POST_TYPE
+        )
     except Exception as e:
         logger.error(f"Content generation failed for cluster_id={cluster_id}: {e}")
         await callback.message.edit_text(
@@ -430,22 +444,37 @@ async def mark_published_handler(callback: CallbackQuery, session: AsyncSession)
 
 @router.callback_query(F.data.startswith("regen_post_"))
 async def regen_post_handler(callback: CallbackQuery, session: AsyncSession) -> None:
-    """Show post type selection to regenerate for a cluster."""
+    """Regenerate a draft post for cluster in unified mode."""
+    await callback.answer()
     cluster_id = int(callback.data.split("_")[-1])
     cluster = await session.get(PainCluster, cluster_id)
     if not cluster:
         await callback.answer("Кластер не найден.", show_alert=True)
         return
 
-    text = (
-        f"🔄 Перегенерация поста\n\n"
-        f"Кластер: {cluster.name}\n\n"
-        "Выберите тип поста:"
-    )
+    await callback.message.edit_text("⏳ Перегенерирую черновик поста...")
+    from modules.content_generator import generate_post
+
+    try:
+        post = await generate_post(
+            cluster_id, session, post_type=_UNIFIED_POST_TYPE
+        )
+    except Exception as e:
+        logger.error(
+            f"Content regeneration failed for cluster_id={cluster_id}: {e}"
+        )
+        await callback.message.edit_text(
+            "❌ Ошибка при перегенерации поста. Попробуйте позже.",
+            reply_markup=get_cluster_keyboard(cluster_id),
+        )
+        return
+
+    text = format_draft(post, cluster.name)
     await callback.message.edit_text(
-        text, reply_markup=get_post_type_keyboard(cluster_id)
+        text,
+        reply_markup=get_draft_keyboard(post.id, cluster_id),
+        parse_mode="HTML",
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("delete_draft_"))

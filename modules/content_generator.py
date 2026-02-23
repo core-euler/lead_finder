@@ -16,7 +16,9 @@ from modules.enrichment.web_search import search_ai_best_practices_for_cluster
 logger = logging.getLogger(__name__)
 
 _PROMPT_CACHE: str | None = None
+DEFAULT_POST_TYPE = "single"
 _POST_TYPE_LABELS = {
+    "single": "Пост по кластеру боли",
     "scenario": "Сценарий",
     "insight": "Инсайт",
     "breakdown": "Разбор тренда",
@@ -26,7 +28,7 @@ try:
     _llm = ChatOpenAI(
         openai_api_key=config.COMET_API_KEY,
         openai_api_base=config.COMET_API_BASE_URL,
-        model=config.COMET_API_MODEL,
+        model=config.COMET_API_POST_MODEL,
         temperature=0.7,
         request_timeout=90,
     )
@@ -110,14 +112,14 @@ def _render_prompt(
 
 async def generate_post(
     cluster_id: int,
-    post_type: str,
     session: AsyncSession,
+    post_type: str = DEFAULT_POST_TYPE,
 ) -> GeneratedPost:
     """Generate a draft Telegram post for a pain cluster.
 
     Args:
         cluster_id: ID of the PainCluster to generate a post for.
-        post_type: One of "scenario", "insight", "breakdown".
+        post_type: Post type label key. Defaults to a single unified mode.
         session: Active async SQLAlchemy session.
 
     Returns:

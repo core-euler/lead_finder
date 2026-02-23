@@ -9,6 +9,7 @@ load_dotenv()
 COMET_API_KEY = os.getenv("COMET_API_KEY")
 COMET_API_BASE_URL = os.getenv("COMET_API_BASE_URL", "https://api.cometapi.com/v1")
 COMET_API_MODEL = os.getenv("COMET_API_MODEL", "gpt-4o")
+COMET_API_POST_MODEL = os.getenv("COMET_API_POST_MODEL", COMET_API_MODEL)
 
 # Google Custom Search API
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
