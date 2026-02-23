@@ -1,6 +1,5 @@
 """Handlers for the Pains & Content UI section."""
 import logging
-from datetime import datetime, timezone
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
@@ -418,30 +417,6 @@ async def view_draft_handler(callback: CallbackQuery, session: AsyncSession) -> 
 
 
 # --- Draft Actions ---
-
-@router.callback_query(F.data.startswith("mark_published_"))
-async def mark_published_handler(callback: CallbackQuery, session: AsyncSession) -> None:
-    """Mark a draft post as published."""
-    post_id = int(callback.data.split("_")[-1])
-    post = await session.get(GeneratedPost, post_id)
-    if not post:
-        await callback.answer("Черновик не найден.", show_alert=True)
-        return
-
-    post.status = "published"
-    post.published_at = datetime.now(timezone.utc)
-    await session.commit()
-    await callback.answer("✅ Отмечено как опубликованное!")
-
-    cluster = await session.get(PainCluster, post.cluster_id)
-    cluster_name = cluster.name if cluster else "Неизвестный кластер"
-    await callback.message.edit_text(
-        format_draft(post, cluster_name),
-        reply_markup=get_draft_keyboard(post.id, post.cluster_id),
-        parse_mode="HTML",
-    )
-
-
 @router.callback_query(F.data.startswith("regen_post_"))
 async def regen_post_handler(callback: CallbackQuery, session: AsyncSession) -> None:
     """Regenerate a draft post for cluster in unified mode."""

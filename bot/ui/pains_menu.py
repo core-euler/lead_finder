@@ -92,11 +92,10 @@ def get_post_type_keyboard(cluster_id: int) -> InlineKeyboardMarkup:
 def get_draft_keyboard(post_id: int, cluster_id: int) -> InlineKeyboardMarkup:
     """Keyboard for a generated draft post."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Опубликовано", callback_data=f"mark_published_{post_id}")
-    builder.button(text="🔄 Перегенерировать", callback_data=f"regen_post_{cluster_id}")
+    builder.button(text="🔄 Еще раз", callback_data=f"regen_post_{cluster_id}")
     builder.button(text="❌ Удалить", callback_data=f"delete_draft_{post_id}")
     builder.button(text="◀️ К черновикам", callback_data="my_drafts")
-    builder.adjust(1)
+    builder.adjust(2, 1)
     return builder.as_markup()
 
 
