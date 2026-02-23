@@ -53,7 +53,7 @@ async def my_programs_handler(callback: CallbackQuery, session: AsyncSession):
             text += (
                 f"{i+1}️⃣ {program.name}\n"
                 f"   {len(program.chats)} чата(ов) • скор ≥{program.min_score} • {schedule_status}\n"
-                f"   Последний запуск: сегодня, 0 лидов (TODO)\n\n" # TODO: Implement last run logic
+                "\n"
             )
 
     await callback.message.edit_text(
