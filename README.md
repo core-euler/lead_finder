@@ -1,42 +1,148 @@
 # Lead Finder
 
-Автоматизированная система поиска B2B лидов для фриланс-агентства, специализирующегося на разработке Telegram-ботов и Mini Apps.
+Lead Finder is a Telegram bot for finding and qualifying B2B leads from Telegram chats.
+It is designed for agencies/freelancers who sell automation services (Telegram bots, AI assistants, workflow integrations).
 
-## Конфигурация
+## What It Does
 
-Проект использует:
-- **CometAPI** для доступа к LLM (OpenAI-совместимый).
-- **Google Custom Search API** для выполнения веб-поиска.
+- Creates "programs" (niche + source chats + settings).
+- Parses chat activity and identifies potential lead candidates.
+- Qualifies candidates with LLM.
+- Stores and shows lead cards in Telegram.
+- Extracts pains from saved/qualified leads.
+- Clusters pains and generates draft posts for your content workflow.
+- Supports scheduled runs per program (daily time), with in-bot on/off toggle.
 
-### Переменные окружения
+## Current Architecture
 
-Создайте файл `.env` из `.env.example` и заполните переменные.
+- `aiogram` bot UI and handlers
+- `Telethon` for Telegram parsing/auth session
+- `SQLAlchemy + PostgreSQL` for storage
+- `APScheduler` for scheduled jobs
+- `CometAPI` (OpenAI-compatible) for LLM calls
+- `Google Custom Search API` for web enrichment/best-practice context
 
-- **CometAPI**:
-  - `COMET_API_KEY`: Ключ доступа к CometAPI.
-  - `COMET_API_MODEL`: Используемая модель (например, `gpt-4o`).
+Main entrypoint: `run_bot.py`
 
-- **Google Custom Search API**:
-  - `GOOGLE_API_KEY`: Ваш API ключ из Google Cloud Console.
-  - `GOOGLE_CSE_ID`: Ваш идентификатор поисковой системы (Programmable Search Engine ID).
+## Repository Structure
 
-- **Telegram API**:
-  - `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`: Ваши учетные данные для доступа к Telegram API.
+- `bot/` — bot app, handlers, scheduler, DB models
+- `modules/` — parsing, qualification, pain clustering, content generation
+- `prompts/` — prompt templates
+- `docs/` — product specs and implementation notes
+- `run_bot.py` — bot launcher
+- `docker-compose.yml` — app + postgres services
 
-### Как получить ключи для Google Custom Search API
+## Prerequisites
 
-#### 1. Получение API-ключа (API Key)
-1. Перейдите в [консоль Google Cloud](https://console.cloud.google.com/).
-2. Создайте новый проект или выберите существующий.
-3. В меню навигации (☰) выберите **"API и сервисы"** -> **"Библиотека"**.
-4. Найдите и включите **"Custom Search API"**.
-5. Перейдите в **"API и сервисы"** -> **"Учетные данные"** (Credentials).
-6. Нажмите **"Создать учетные данные"** -> **"Ключ API"** и скопируйте его.
+- Docker + Docker Compose
+- Telegram app credentials (`api_id`, `api_hash`, phone)
+- Telegram Bot token
+- CometAPI key
+- Google Custom Search credentials
 
-#### 2. Получение ID поисковой системы (Search Engine ID)
-1. Перейдите на страницу [Programmable Search Engine](https://programmablesearchengine.google.com/).
-2. Нажмите **"Добавить"**, чтобы создать новую поисковую систему.
-3. Дайте ей любое имя, введите любой сайт (например, `google.com`) и нажмите **"Создать"**.
-4. Нажмите **"Настроить"** (Edit search engine).
-5. **Важно:** На вкладке **"Основные"** включите опцию **"Искать во всем Интернете"**.
-6. В разделе **"Сведения"** скопируйте **"Идентификатор поисковой системы"**.
+## Environment Variables
+
+Create `.env` from `.env.example` and fill required values.
+
+Core:
+
+- `COMET_API_KEY`
+- `COMET_API_BASE_URL` (default: `https://api.cometapi.com/v1`)
+- `COMET_API_MODEL` (general model for qualification, etc.)
+- `COMET_API_POST_MODEL` (dedicated model for post generation)
+- `GOOGLE_API_KEY`
+- `GOOGLE_CSE_ID`
+- `TELEGRAM_API_ID`
+- `TELEGRAM_API_HASH`
+- `TELEGRAM_PHONE`
+- `TELEGRAM_BOT_TOKEN`
+
+Database (used by Docker Compose service `db`):
+
+- `POSTGRES_HOST`
+- `POSTGRES_PORT`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
+
+Useful runtime settings:
+
+- `MESSAGES_LIMIT`
+- `MESSAGE_MAX_AGE_DAYS`
+- `SAFETY_MODE` (`fast`, `normal`, `careful`)
+
+## Quick Start (Docker)
+
+1. Create and fill `.env`:
+
+```bash
+cp .env.example .env
+```
+
+2. Build and start services:
+
+```bash
+docker compose up -d --build
+```
+
+3. Watch logs:
+
+```bash
+docker compose logs -f app
+```
+
+## Telegram Session Authentication (Telethon)
+
+The bot needs a valid Telethon user session to parse chats.
+
+Option A (recommended in-bot flow):
+
+- Start a program run.
+- If auth is required, bot asks for code/password.
+- Complete steps directly in Telegram.
+
+Option B (manual one-time local session generation):
+
+```bash
+python generate_session.py
+```
+
+This creates/updates Telethon session file, then Dockerized app can reuse it.
+
+## Typical In-Bot Workflow
+
+1. Open bot and go to `My Programs`.
+2. Create a program (name, niche, source chats).
+3. Run manually (`Run`) or keep scheduled auto-collection enabled.
+4. Review lead cards.
+5. Open `Pains & Content` to inspect clusters and generate drafts.
+
+## Notes on Content Generation
+
+- Post generation uses `COMET_API_POST_MODEL`.
+- Before generation, system fetches web best practices for AI/business integration and injects them into prompt context.
+- Current UX uses one unified post mode (no scenario/insight/trend selection).
+
+## Troubleshooting
+
+- `TELEGRAM_BOT_TOKEN not found`: check `.env`.
+- No pains/clusters shown: ensure program has qualified leads and run completed successfully.
+- Callback timeout errors (`query is too old`): update to latest code (callback ack is handled early).
+- DB errors about schema/constraints: restart app after pulling latest updates so startup migrations run.
+
+## Development
+
+Install dependencies locally if needed:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run bot locally:
+
+```bash
+python run_bot.py
+```
+
+For production-like usage, Docker Compose is recommended.
