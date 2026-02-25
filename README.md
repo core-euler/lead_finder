@@ -146,3 +146,26 @@ python run_bot.py
 ```
 
 For production-like usage, Docker Compose is recommended.
+
+## CI/CD Auto Deploy (GitHub Actions -> Server)
+
+This repository includes an auto-deploy workflow:
+- File: `.github/workflows/deploy.yml`
+- Trigger: every push to `main` (and manual `workflow_dispatch`)
+- Action: SSH to server -> `git pull` -> `docker compose up -d --build`
+
+Required GitHub repository secrets:
+- `DEPLOY_HOST` (server IP/domain)
+- `DEPLOY_USER` (SSH user)
+- `DEPLOY_SSH_KEY` (private key in PEM/OpenSSH format)
+- `DEPLOY_PATH` (absolute path to project on server, e.g. `/opt/lead_finder`)
+
+Optional secrets:
+- `DEPLOY_PORT` (default `22`)
+- `DEPLOY_BRANCH` (default `main`)
+
+Server prerequisites:
+- Repository cloned at `DEPLOY_PATH`
+- Docker + Docker Compose installed
+- SSH user has permissions to run `docker compose`
+- Server can run `git pull` for this repository (deploy key or machine user configured)

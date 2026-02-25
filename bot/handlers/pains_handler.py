@@ -2,6 +2,7 @@
 import logging
 
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +35,22 @@ _UNIFIED_POST_TYPE = "single"
 
 # --- Helper ---
 
+async def _safe_edit_text(
+    callback: CallbackQuery, text: str, **kwargs
+) -> None:
+    """Edit callback message and ignore duplicate-content edit errors."""
+    if not callback.message:
+        return
+
+    try:
+        await callback.message.edit_text(text, **kwargs)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            logger.debug("Skip edit_text: message is not modified")
+            return
+        raise
+
+
 async def _get_program_ids_for_user(
     user_id: int, session: AsyncSession
 ) -> list[int]:
@@ -54,7 +71,7 @@ async def pains_menu_handler(callback: CallbackQuery, session: AsyncSession) -> 
     program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
 
     if not program_ids:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
             reply_markup=get_main_menu_keyboard(),
         )
@@ -84,7 +101,7 @@ async def pains_menu_handler(callback: CallbackQuery, session: AsyncSession) -> 
     ).scalar_one()
 
     text = format_pains_summary(total_pains, total_clusters, total_posts)
-    await callback.message.edit_text(text, reply_markup=get_pains_menu_keyboard())
+    await _safe_edit_text(callback, text, reply_markup=get_pains_menu_keyboard())
     await callback.answer()
 
 
@@ -100,7 +117,7 @@ async def top_pains_handler(callback: CallbackQuery, session: AsyncSession) -> N
     program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
 
     if not program_ids:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
             reply_markup=get_main_menu_keyboard(),
         )
@@ -115,7 +132,7 @@ async def top_pains_handler(callback: CallbackQuery, session: AsyncSession) -> N
 
     if not ranked:
         text = format_top_pains([])
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             text,
             reply_markup=get_top_pains_keyboard([], 0, 1),
             disable_web_page_preview=True,
@@ -135,7 +152,7 @@ async def top_pains_handler(callback: CallbackQuery, session: AsyncSession) -> N
         total_pages=total_pages,
         total_clusters=total,
     )
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_top_pains_keyboard(
             page_clusters, page, total_pages, mode="top"
@@ -163,7 +180,7 @@ async def cluster_detail_handler(callback: CallbackQuery, session: AsyncSession)
     sample_pains = sample_pains_result.scalars().all()
 
     text = format_cluster_detail(cluster, sample_pains)
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_cluster_keyboard(cluster_id),
         disable_web_page_preview=True,
@@ -198,7 +215,7 @@ async def cluster_quotes_handler(callback: CallbackQuery, session: AsyncSession)
     page = max(0, min(page, total_pages - 1))
 
     text = format_quotes_page(cluster, pains, page, _QUOTES_PAGE_SIZE)
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_quotes_keyboard(cluster_id, page, total_pages),
         disable_web_page_preview=True,
@@ -222,7 +239,7 @@ async def generate_post_menu_handler(
     program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
 
     if not program_ids:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
             reply_markup=get_main_menu_keyboard(),
         )
@@ -236,7 +253,7 @@ async def generate_post_menu_handler(
     ranked = sorted(clusters, key=cluster_score, reverse=True)
 
     if not ranked:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "Нет кластеров для генерации поста. Запустите программу сначала.",
             reply_markup=get_pains_menu_keyboard(),
         )
@@ -258,7 +275,7 @@ async def generate_post_menu_handler(
             total_clusters=total,
         )
     )
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_top_pains_keyboard(
             page_clusters, page, total_pages, mode="generate"
@@ -280,7 +297,7 @@ async def generate_post_choose_type(
         await callback.answer("Кластер не найден.", show_alert=True)
         return
 
-    await callback.message.edit_text("⏳ Генерирую черновик поста...")
+    await _safe_edit_text(callback, "⏳ Генерирую черновик поста...")
 
     from modules.content_generator import generate_post
 
@@ -290,14 +307,14 @@ async def generate_post_choose_type(
         )
     except Exception as e:
         logger.error(f"Content generation failed for cluster_id={cluster_id}: {e}")
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "❌ Ошибка при генерации поста. Попробуйте позже.",
             reply_markup=get_cluster_keyboard(cluster_id),
         )
         return
 
     text = format_draft(post, cluster.name)
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_draft_keyboard(post.id, cluster_id),
         parse_mode="HTML",
@@ -323,7 +340,7 @@ async def generate_post_execute(
         await callback.answer("Кластер не найден.", show_alert=True)
         return
 
-    await callback.message.edit_text("⏳ Генерирую черновик поста...")
+    await _safe_edit_text(callback, "⏳ Генерирую черновик поста...")
 
     from modules.content_generator import generate_post
 
@@ -333,14 +350,14 @@ async def generate_post_execute(
         )
     except Exception as e:
         logger.error(f"Content generation failed for cluster_id={cluster_id}: {e}")
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "❌ Ошибка при генерации поста. Попробуйте позже.",
             reply_markup=get_cluster_keyboard(cluster_id),
         )
         return
 
     text = format_draft(post, cluster.name)
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_draft_keyboard(post.id, cluster_id),
         parse_mode="HTML",
@@ -357,7 +374,7 @@ async def my_drafts_handler(callback: CallbackQuery, session: AsyncSession) -> N
 
     program_ids = await _get_program_ids_for_user(callback.from_user.id, session)
     if not program_ids:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
             reply_markup=get_main_menu_keyboard(),
         )
@@ -373,7 +390,7 @@ async def my_drafts_handler(callback: CallbackQuery, session: AsyncSession) -> N
     posts = posts_result.scalars().all()
 
     if not posts:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "📝 Черновики\n\nПока нет черновиков. Сгенерируйте первый пост!",
             reply_markup=get_pains_menu_keyboard(),
         )
@@ -385,7 +402,7 @@ async def my_drafts_handler(callback: CallbackQuery, session: AsyncSession) -> N
     page = max(0, min(page, total_pages - 1))
 
     text = f"📝 Черновики ({total} шт.)\n\nВыберите черновик для просмотра:"
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_drafts_list_keyboard(posts, page, _DRAFTS_PAGE_SIZE),
     )
@@ -408,7 +425,7 @@ async def view_draft_handler(callback: CallbackQuery, session: AsyncSession) -> 
     cluster_name = cluster.name if cluster else "Неизвестный кластер"
 
     text = format_draft(post, cluster_name)
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_draft_keyboard(post.id, post.cluster_id),
         parse_mode="HTML",
@@ -427,7 +444,7 @@ async def regen_post_handler(callback: CallbackQuery, session: AsyncSession) -> 
         await callback.answer("Кластер не найден.", show_alert=True)
         return
 
-    await callback.message.edit_text("⏳ Перегенерирую черновик поста...")
+    await _safe_edit_text(callback, "⏳ Перегенерирую черновик поста...")
     from modules.content_generator import generate_post
 
     try:
@@ -438,14 +455,14 @@ async def regen_post_handler(callback: CallbackQuery, session: AsyncSession) -> 
         logger.error(
             f"Content regeneration failed for cluster_id={cluster_id}: {e}"
         )
-        await callback.message.edit_text(
+        await _safe_edit_text(callback, 
             "❌ Ошибка при перегенерации поста. Попробуйте позже.",
             reply_markup=get_cluster_keyboard(cluster_id),
         )
         return
 
     text = format_draft(post, cluster.name)
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         text,
         reply_markup=get_draft_keyboard(post.id, cluster_id),
         parse_mode="HTML",
@@ -467,7 +484,7 @@ async def delete_draft_handler(callback: CallbackQuery, session: AsyncSession) -
 @router.callback_query(F.data == "main_menu")
 async def main_menu_shortcut(callback: CallbackQuery) -> None:
     """Return to main menu."""
-    await callback.message.edit_text(
+    await _safe_edit_text(callback, 
         MAIN_MENU_TEXT, reply_markup=get_main_menu_keyboard()
     )
     await callback.answer()
