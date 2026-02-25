@@ -124,7 +124,10 @@ async def run_program_handler(callback: CallbackQuery, session: AsyncSession):
 
     user = await session.get(User, callback.from_user.id)
     if not user:
-        await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
+        await callback.answer(
+            "Профиль не найден. Откройте главное меню и попробуйте снова.",
+            show_alert=True,
+        )
         return
 
     can_run, days_left = check_weekly_analysis_limit(user)

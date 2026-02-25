@@ -171,7 +171,10 @@ async def save_program(callback: CallbackQuery, state: FSMContext, session: Asyn
 
     user = await session.get(User, callback.from_user.id)
     if not user:
-        await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
+        await callback.answer(
+            "Профиль не найден. Откройте главное меню и попробуйте снова.",
+            show_alert=True,
+        )
         return
 
     allowed, reason = await check_program_limit(session, user)

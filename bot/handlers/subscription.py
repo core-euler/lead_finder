@@ -1,7 +1,6 @@
 import logging
 
 from aiogram import Router, F
-from aiogram.filters import Command
 from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +32,10 @@ def _subscription_menu_keyboard() -> object:
             text=f"{_period_label(period_key)} — ⭐ {stars}",
             callback_data=f"buy_sub_{period_key}",
         )
+    builder.button(
+        text="🆘 Поддержка оплаты",
+        callback_data="subscription_support",
+    )
     builder.button(
         text="◀️ Главное меню",
         callback_data="main_menu",
@@ -71,7 +74,7 @@ async def subscription_menu_handler(
 ) -> None:
     user = await session.get(User, callback.from_user.id)
     if not user:
-        await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
+        await callback.answer("Профиль не найден. Откройте главное меню и попробуйте снова.", show_alert=True)
         return
     await callback.message.edit_text(
         _render_subscription_text(user),
@@ -87,7 +90,7 @@ async def buy_subscription_handler(
 ) -> None:
     user = await session.get(User, callback.from_user.id)
     if not user:
-        await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
+        await callback.answer("Профиль не найден. Откройте главное меню и попробуйте снова.", show_alert=True)
         return
 
     period_key = callback.data.split("_")[-1]
@@ -154,8 +157,6 @@ async def successful_payment_handler(
     )
 
 
-@router.message(Command("paysupport"))
-async def paysupport_handler(message: Message) -> None:
-    await message.answer(
-        "По вопросам оплаты: @support"
-    )
+@router.callback_query(F.data == "subscription_support")
+async def subscription_support_handler(callback: CallbackQuery) -> None:
+    await callback.answer("Поддержка оплаты: @support", show_alert=True)

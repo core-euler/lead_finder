@@ -411,7 +411,10 @@ async def _run_program_job_inner(bot: Bot, program_id: int, chat_id: int) -> Non
 
         user = await session.get(User, chat_id)
         if not user:
-            await bot.send_message(chat_id, "❌ Профиль пользователя не найден. Нажмите /start.")
+            await bot.send_message(
+                chat_id,
+                "❌ Профиль пользователя не найден. Вернитесь в главное меню и попробуйте снова.",
+            )
             return
 
         can_run, days_left = check_weekly_analysis_limit(user)
