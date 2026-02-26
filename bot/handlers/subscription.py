@@ -19,17 +19,22 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+_PERIOD_LABELS = {"1m": "1 мес", "3m": "3 мес", "6m": "6 мес", "12m": "12 мес"}
+_PERIOD_DISCOUNTS = {"1m": None, "3m": 16, "6m": 33, "12m": 60}
+
+
 def _period_label(period_key: str) -> str:
-    labels = {"1m": "1 мес", "3m": "3 мес", "6m": "6 мес", "12m": "12 мес"}
-    return labels.get(period_key, period_key)
+    return _PERIOD_LABELS.get(period_key, period_key)
 
 
 def _subscription_menu_keyboard() -> object:
     builder = InlineKeyboardBuilder()
     for period_key in ("1m", "3m", "6m", "12m"):
         stars = STARS_PRICES[period_key]
+        discount = _PERIOD_DISCOUNTS[period_key]
+        discount_str = f" (-{discount}%)" if discount else ""
         builder.button(
-            text=f"{_period_label(period_key)} — ⭐ {stars}",
+            text=f"{_period_label(period_key)} — ⭐ {stars}{discount_str}",
             callback_data=f"buy_sub_{period_key}",
         )
     builder.button(
@@ -159,4 +164,4 @@ async def successful_payment_handler(
 
 @router.callback_query(F.data == "subscription_support")
 async def subscription_support_handler(callback: CallbackQuery) -> None:
-    await callback.answer("Поддержка оплаты: @support", show_alert=True)
+    await callback.answer("Поддержка оплаты: @devcore_dev", show_alert=True)
