@@ -1,6 +1,6 @@
 import logging
 import datetime
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -13,6 +13,24 @@ from bot.models.user import User
 from bot.states import UserProfile
 
 router = Router()
+
+REQUIRED_CHANNEL = "@leather_tensor"
+
+
+async def _is_channel_member(bot: Bot, user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(REQUIRED_CHANNEL, user_id)
+        return member.status not in ("left", "kicked", "banned")
+    except Exception:
+        return False
+
+
+def _channel_check_keyboard() -> object:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📢 Подписаться на канал", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")
+    builder.button(text="✅ Я подписался", callback_data="check_channel_subscription")
+    builder.adjust(1)
+    return builder.as_markup()
 
 
 def _get_settings_keyboard() -> object:
@@ -56,18 +74,17 @@ async def _touch_user(user, session: AsyncSession) -> User:
     return existing
 
 
-@router.message(Command("start"))
-async def start_handler(
-    message: Message, session: AsyncSession, state: FSMContext
-):
-    """Handler for the /start command."""
-    logging.info("Handling /start command")
-    user = await _touch_user(message.from_user, session)
-
+async def _continue_onboarding(
+    tg_user: object,
+    send_fn,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    user = await _touch_user(tg_user, session)
     if not (user.services_description or "").strip():
         await state.set_state(UserProfile.enter_services_description)
         await state.update_data(profile_flow="onboarding")
-        await message.answer(
+        await send_fn(
             "Привет! Я помогаю находить клиентов в Telegram-чатах.\n\n"
             "Чтобы настроить поиск под тебя, напиши одним сообщением:\n"
             "• Какие услуги ты продаешь?\n"
@@ -75,11 +92,42 @@ async def start_handler(
             "Пример: «Делаю сайты и лендинги для малого бизнеса».",
         )
         return
+    await send_fn(MAIN_MENU_TEXT, reply_markup=get_main_menu_keyboard())
 
-    await message.answer(
-        MAIN_MENU_TEXT,
-        reply_markup=get_main_menu_keyboard()
-    )
+
+@router.message(Command("start"))
+async def start_handler(
+    message: Message, bot: Bot, session: AsyncSession, state: FSMContext
+) -> None:
+    """Handler for the /start command."""
+    logging.info("Handling /start command")
+
+    if not await _is_channel_member(bot, message.from_user.id):
+        await message.answer(
+            f"Для использования бота необходимо подписаться на канал {REQUIRED_CHANNEL}.\n\n"
+            "После подписки нажмите кнопку «Я подписался».",
+            reply_markup=_channel_check_keyboard(),
+        )
+        return
+
+    await _continue_onboarding(message.from_user, message.answer, session, state)
+
+
+@router.callback_query(F.data == "check_channel_subscription")
+async def check_channel_subscription_handler(
+    callback: CallbackQuery, bot: Bot, session: AsyncSession, state: FSMContext
+) -> None:
+    """Re-checks channel membership and continues onboarding if passed."""
+    if not await _is_channel_member(bot, callback.from_user.id):
+        await callback.answer(
+            f"Вы ещё не подписаны на {REQUIRED_CHANNEL}. Подпишитесь и попробуйте снова.",
+            show_alert=True,
+        )
+        return
+
+    await callback.message.delete()
+    await _continue_onboarding(callback.from_user, callback.message.answer, session, state)
+    await callback.answer()
 
 @router.callback_query(F.data == "main_menu")
 async def main_menu_callback_handler(
