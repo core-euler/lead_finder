@@ -7,7 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.pain_clusterer import _parse_llm_json, _render_prompt, _update_cluster_stats
+from bot.models.pain import Pain, PainCluster
+from bot.models.program import Program  # noqa: F401
+from modules import pain_clusterer as clusterer
+from modules.pain_clusterer import (
+    _parse_llm_json,
+    _render_prompt,
+    _update_cluster_stats,
+)
 
 
 class _Scalars:
@@ -36,6 +43,45 @@ class _FakeSession:
 
     async def get(self, _model, _cluster_id):  # noqa: ANN001
         return self._cluster
+
+
+class _ClusterResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return SimpleNamespace(all=lambda: list(self._rows))
+
+
+class _ClusterSession:
+    def __init__(self, unclustered, existing_clusters):
+        self.unclustered = unclustered
+        self.existing_clusters = existing_clusters
+        self.added: list[PainCluster] = []
+        self.exec_calls = 0
+        self.flush_calls = 0
+        self.commit_calls = 0
+        self._next_cluster_id = 100
+
+    async def execute(self, query):  # noqa: ANN001
+        if self.exec_calls == 0:
+            self.exec_calls += 1
+            return _ClusterResult(self.unclustered)
+        self.exec_calls += 1
+        return _ClusterResult(self.existing_clusters)
+
+    def add(self, obj):  # noqa: ANN001
+        self.added.append(obj)
+
+    async def flush(self) -> None:
+        self.flush_calls += 1
+        for cluster in self.added:
+            if getattr(cluster, "id", None) is None:
+                cluster.id = self._next_cluster_id
+                self._next_cluster_id += 1
+
+    async def commit(self) -> None:
+        self.commit_calls += 1
 
 
 @pytest.mark.unit
@@ -84,3 +130,100 @@ async def test_update_cluster_stats_sets_counts_intensity_and_trend() -> None:
     assert cluster.first_seen is not None
     assert cluster.last_seen is not None
     assert cluster.trend == "growing"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cluster_new_pains_disabled_or_no_unclustered(monkeypatch) -> None:
+    monkeypatch.setattr(clusterer.config, "PAIN_COLLECTION_ENABLED", False)
+    disabled = await clusterer.cluster_new_pains(
+        1, _ClusterSession(unclustered=[], existing_clusters=[])
+    )
+    assert disabled == 0
+
+    monkeypatch.setattr(clusterer.config, "PAIN_COLLECTION_ENABLED", True)
+    no_rows = await clusterer.cluster_new_pains(
+        1, _ClusterSession(unclustered=[], existing_clusters=[])
+    )
+    assert no_rows == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cluster_new_pains_assigns_existing_and_new(monkeypatch) -> None:
+    pains = [
+        Pain(
+            id=1,
+            user_id=10,
+            program_id=7,
+            text="p1",
+            original_quote="q1",
+            category="sales",
+            intensity="high",
+            source_chat="chat",
+            source_message_id=1,
+        ),
+        Pain(
+            id=2,
+            user_id=10,
+            program_id=7,
+            text="p2",
+            original_quote="q2",
+            category="other",
+            intensity="low",
+            source_chat="chat",
+            source_message_id=2,
+        ),
+        Pain(
+            id=3,
+            user_id=10,
+            program_id=7,
+            text="p3",
+            original_quote="q3",
+            category="other",
+            intensity="low",
+            source_chat="chat",
+            source_message_id=3,
+        ),
+    ]
+    existing_cluster = PainCluster(
+        id=10,
+        user_id=10,
+        program_id=7,
+        name="Existing",
+        category="sales",
+        description="desc",
+    )
+    session = _ClusterSession(unclustered=pains, existing_clusters=[existing_cluster])
+    monkeypatch.setattr(clusterer.config, "PAIN_COLLECTION_ENABLED", True)
+    monkeypatch.setattr(clusterer, "_load_prompt", lambda: "tpl")
+
+    class _LLM:
+        async def ainvoke(self, _messages):  # noqa: ANN001
+            content = (
+                '{"assignments":['
+                '{"pain_id":1,"cluster_id":10},'
+                '{"pain_id":2,"cluster_id":"new","new_cluster_name":"Ops","new_cluster_category":"operations","new_cluster_description":"d"},'
+                '{"pain_id":3,"cluster_id":"new","new_cluster_name":"Ops","new_cluster_category":"operations","new_cluster_description":"d"},'
+                '{"pain_id":999,"cluster_id":10},'
+                '{"pain_id":2,"cluster_id":"bad"}'
+                ']}'
+            )
+            return SimpleNamespace(content=content)
+
+    monkeypatch.setattr(clusterer, "_llm", _LLM())
+    updated: list[int] = []
+
+    async def _update_stats(cluster_id: int, sess):  # noqa: ANN001
+        updated.append(cluster_id)
+
+    monkeypatch.setattr(clusterer, "_update_cluster_stats", _update_stats)
+
+    clustered = await clusterer.cluster_new_pains(7, session)
+
+    assert clustered == 3
+    assert session.commit_calls == 1
+    assert pains[0].cluster_id == 10
+    assert pains[1].cluster_id is not None
+    assert pains[2].cluster_id == pains[1].cluster_id
+    assert sorted(updated) == sorted({10, pains[1].cluster_id})
