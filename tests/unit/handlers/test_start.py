@@ -41,6 +41,14 @@ def test_render_settings_text_localized() -> None:
 
 
 @pytest.mark.unit
+def test_settings_keyboard_contains_edit_and_back() -> None:
+    kb = start._get_settings_keyboard("en")
+    texts = [b.text for r in kb.inline_keyboard for b in r]
+    assert "✏️ Edit Services Description" in texts
+    assert "◀️ Back" in texts
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_start_handler_access_closed(monkeypatch) -> None:
     async def _not_member(bot, user_id):  # noqa: ANN001, ARG001
@@ -134,6 +142,104 @@ async def test_main_menu_callback_handler(monkeypatch) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_statistics_stub() -> None:
+    callback = FakeCallback(FakeUser(id=50, language_code="en"), data="statistics")
+    await start.statistics_stub(callback)
+    assert "under development" in callback.answers[-1][0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_touch_user_existing_and_new() -> None:
+    existing = User(telegram_id=100, username="old")
+    session_existing = FakeSession(users={100: existing})
+    tg_user = SimpleNamespace(id=100, username="newname")
+
+    got_existing = await start._touch_user(tg_user, session_existing)
+    assert got_existing.username == "newname"
+    assert session_existing.commits == 1
+
+    session_new = FakeSession()
+    tg_new = SimpleNamespace(id=101, username="fresh")
+    got_new = await start._touch_user(tg_new, session_new)
+    assert got_new.telegram_id == 101
+    assert len(session_new.added) == 1
+    assert session_new.commits == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_continue_onboarding_prompts_profile(monkeypatch) -> None:
+    async def _touch_user(user, session):  # noqa: ANN001
+        return User(telegram_id=user.id, username=user.username, services_description=" ")
+
+    monkeypatch.setattr(start, "_touch_user", _touch_user)
+    state = FakeState()
+    sent: list[str] = []
+
+    async def _send(text, **kwargs):  # noqa: ANN003
+        sent.append(text)
+
+    tg_user = SimpleNamespace(id=60, username="u", language_code="en")
+    await start._continue_onboarding(tg_user, _send, FakeSession(), state)
+
+    assert state.state == start.UserProfile.enter_services_description
+    assert state.data["profile_flow"] == "onboarding"
+    assert "To personalize lead search" in sent[0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_continue_onboarding_shows_main_menu(monkeypatch) -> None:
+    async def _touch_user(user, session):  # noqa: ANN001
+        return User(
+            telegram_id=user.id,
+            username=user.username,
+            services_description="I do SEO",
+        )
+
+    monkeypatch.setattr(start, "_touch_user", _touch_user)
+    state = FakeState()
+    sent: list[tuple[str, dict]] = []
+
+    async def _send(text, **kwargs):  # noqa: ANN003
+        sent.append((text, kwargs))
+
+    tg_user = SimpleNamespace(id=61, username="u", language_code="en")
+    await start._continue_onboarding(tg_user, _send, FakeSession(), state)
+
+    assert "LeadCore" in sent[0][0]
+    assert "reply_markup" in sent[0][1]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_settings_and_edit_services_handlers(monkeypatch) -> None:
+    async def _touch_user(user, session):  # noqa: ANN001
+        return User(
+            telegram_id=user.id,
+            username=user.username,
+            services_description="Current services",
+        )
+
+    monkeypatch.setattr(start, "_touch_user", _touch_user)
+    callback = FakeCallback(FakeUser(id=70, language_code="en"), data="settings")
+
+    await start.settings_handler(callback, FakeSession())
+    assert "Current services" in callback.message.edits[-1][0]
+
+    state = FakeState()
+    callback_edit = FakeCallback(
+        FakeUser(id=70, language_code="en"), data="edit_services_description"
+    )
+    await start.edit_services_description_handler(callback_edit, state)
+    assert state.state == start.UserProfile.enter_services_description
+    assert state.data["profile_flow"] == "settings"
+    assert "Enter your new services description" in callback_edit.message.edits[-1][0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_save_services_description_short_text() -> None:
     message = FakeMessage(FakeUser(id=6, language_code="en"), text="short")
     state = FakeState()
@@ -168,4 +274,31 @@ async def test_save_services_description_onboarding(monkeypatch) -> None:
 
     assert state.cleared is True
     assert any("saved" in text for text, _ in message.answers)
+    assert session.commits == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_save_services_description_settings_flow(monkeypatch) -> None:
+    async def _touch_user(user, session):  # noqa: ANN001
+        return User(
+            telegram_id=user.id,
+            username=user.username,
+            services_description="old",
+        )
+
+    monkeypatch.setattr(start, "_touch_user", _touch_user)
+    message = FakeMessage(
+        FakeUser(id=71, language_code="en"),
+        text="I automate support for shops",
+    )
+    state = FakeState()
+    await state.update_data(profile_flow="settings")
+    session = FakeSession()
+
+    await start.save_services_description_handler(message, state=state, session=session)
+
+    assert state.cleared is True
+    assert message.answers[0][0] == "✅ Services description updated."
+    assert "My Services" in message.answers[1][0]
     assert session.commits == 1

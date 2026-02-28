@@ -2,11 +2,30 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from bot.handlers import program_create
+from bot.models.user import User
 from bot.states import ProgramCreate
-from tests.unit.handlers.helpers import FakeCallback, FakeMessage, FakeState, FakeUser
+from tests.unit.handlers.helpers import (
+    FakeCallback,
+    FakeMessage,
+    FakeSession,
+    FakeState,
+    FakeUser,
+)
+
+
+class _Session(FakeSession):
+    async def refresh(self, obj):  # noqa: ANN001
+        if getattr(obj, "id", None) is None:
+            obj.id = 101
+        if getattr(obj, "schedule_time", None) is None:
+            obj.schedule_time = "09:00"
+        if getattr(obj, "min_score", None) is None:
+            obj.min_score = 5
 
 
 @pytest.mark.unit
@@ -110,3 +129,109 @@ async def test_cancel_creation_clears_state() -> None:
     assert state.cleared is True
     assert "LeadCore" in callback.message.edits[0][0]
     assert "cancelled" in callback.answers[0][0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_back_handlers() -> None:
+    callback = FakeCallback(FakeUser(id=7), data="back_to_niche_description")
+    state = FakeState()
+    await state.update_data(name="Program X")
+
+    await program_create.back_to_niche_description(callback, state)
+    assert state.state == ProgramCreate.enter_niche_description
+    assert "Шаг 2 из 4" in callback.message.edits[-1][0]
+
+    callback2 = FakeCallback(FakeUser(id=7), data="back_to_chats")
+    await state.update_data(name="Program X")
+    await program_create.back_to_chats(callback2, state)
+    assert state.state == ProgramCreate.enter_chats
+    assert "Шаг 3 из 4" in callback2.message.edits[-1][0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_back_to_name_delegates_to_create_program_start(monkeypatch) -> None:
+    callback = FakeCallback(FakeUser(id=8), data="back_to_name")
+    state = FakeState()
+    called = {"count": 0}
+
+    async def _start(cb, st):  # noqa: ANN001
+        called["count"] += 1
+
+    monkeypatch.setattr(program_create, "create_program_start", _start)
+    await program_create.back_to_name(callback, state)
+    assert called["count"] == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_save_program_profile_missing() -> None:
+    callback = FakeCallback(FakeUser(id=9), data="save_program")
+    state = FakeState()
+    await state.set_state(ProgramCreate.confirm_settings)
+    await state.update_data(name="P", niche_description="N", chats=["chat1"])
+    session = _Session()
+
+    await program_create.save_program(callback, state, session)
+
+    assert callback.answers[-1] == (
+        "Профиль не найден. Откройте главное меню и попробуйте снова.",
+        True,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_save_program_limit_blocked(monkeypatch) -> None:
+    callback = FakeCallback(FakeUser(id=10), data="save_program")
+    state = FakeState()
+    await state.set_state(ProgramCreate.confirm_settings)
+    await state.update_data(name="P", niche_description="N", chats=["chat1"])
+    session = _Session(users={10: User(telegram_id=10, username="u")})
+
+    async def _limit(sess, user):  # noqa: ANN001
+        return False, "limit reached"
+
+    monkeypatch.setattr(program_create, "check_program_limit", _limit)
+
+    await program_create.save_program(callback, state, session)
+
+    assert callback.answers[-1] == ("limit reached", True)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_save_program_success(monkeypatch) -> None:
+    callback = FakeCallback(FakeUser(id=11, language_code="en"), data="save_program")
+    state = FakeState()
+    await state.set_state(ProgramCreate.confirm_settings)
+    await state.update_data(
+        name="Program OK",
+        niche_description="Niche",
+        chats=["chat1", "chat2"],
+    )
+    session = _Session(users={11: User(telegram_id=11, username="u")})
+
+    async def _limit_ok(sess, user):  # noqa: ANN001
+        return True, ""
+
+    scheduled: list[tuple[int, int, str]] = []
+    monkeypatch.setattr(program_create, "check_program_limit", _limit_ok)
+    monkeypatch.setattr(
+        program_create,
+        "schedule_program_job",
+        lambda pid, chat_id, at: scheduled.append((pid, chat_id, at)),
+    )
+
+    await program_create.save_program(callback, state, session)
+
+    assert session.commits == 1
+    assert len(session.added) == 1
+    added_program = session.added[0]
+    assert added_program.name == "Program OK"
+    assert [c.chat_username for c in added_program.chats] == ["chat1", "chat2"]
+    assert scheduled == [(101, 11, "09:00")]
+    assert state.cleared is True
+    assert "Программа создана" in callback.message.edits[-1][0]
+    assert callback.answers[-1] == ("Программа успешно создана!", False)
