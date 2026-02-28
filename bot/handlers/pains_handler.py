@@ -8,7 +8,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.models.pain import Pain, PainCluster, GeneratedPost
-from bot.ui.main_menu import get_main_menu_keyboard, MAIN_MENU_TEXT
+from bot.ui.main_menu import get_main_menu_keyboard, get_main_menu_text
 from bot.ui.pains_menu import (
     cluster_score,
     format_pains_summary,
@@ -80,7 +80,7 @@ async def pains_menu_handler(callback: CallbackQuery, session: AsyncSession) -> 
     if not program_ids:
         await _safe_edit_text(callback, 
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
-            reply_markup=get_main_menu_keyboard(),
+            reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
         )
         await callback.answer()
         return
@@ -126,7 +126,7 @@ async def top_pains_handler(callback: CallbackQuery, session: AsyncSession) -> N
     if not program_ids:
         await _safe_edit_text(callback, 
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
-            reply_markup=get_main_menu_keyboard(),
+            reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
         )
         await callback.answer()
         return
@@ -264,7 +264,7 @@ async def generate_post_menu_handler(
     if not program_ids:
         await _safe_edit_text(callback, 
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
-            reply_markup=get_main_menu_keyboard(),
+            reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
         )
         await callback.answer()
         return
@@ -415,7 +415,7 @@ async def my_drafts_handler(callback: CallbackQuery, session: AsyncSession) -> N
     if not program_ids:
         await _safe_edit_text(callback, 
             "У вас нет программ. Создайте программу, чтобы начать сбор болей.",
-            reply_markup=get_main_menu_keyboard(),
+            reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
         )
         await callback.answer()
         return
@@ -545,7 +545,9 @@ async def delete_draft_handler(callback: CallbackQuery, session: AsyncSession) -
 @router.callback_query(F.data == "main_menu")
 async def main_menu_shortcut(callback: CallbackQuery) -> None:
     """Return to main menu."""
+    language_code = callback.from_user.language_code
     await _safe_edit_text(callback, 
-        MAIN_MENU_TEXT, reply_markup=get_main_menu_keyboard()
+        get_main_menu_text(language_code),
+        reply_markup=get_main_menu_keyboard(language_code),
     )
     await callback.answer()

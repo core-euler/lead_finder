@@ -6,6 +6,7 @@ google-api-python-client
 langchain
 langchain-openai
 langchain-core
+fluentogram
 
 # Bot dependencies
 aiogram==3.5.0

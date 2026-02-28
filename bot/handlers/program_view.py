@@ -11,6 +11,7 @@ from bot.models.program import Program
 from bot.models.lead import Lead
 from bot.models.user import User
 from bot.ui.main_menu import get_main_menu_keyboard
+from bot.i18n import get_locale, pick
 from bot.services.program_runner import run_program_job
 from bot.services.subscription import check_weekly_analysis_limit
 from bot.ui.lead_card import format_lead_card, get_lead_card_keyboard
@@ -53,6 +54,7 @@ def get_clear_leads_confirmation_keyboard(program_id: int) -> InlineKeyboardMark
 @router.callback_query(F.data.startswith("show_program_"))
 async def show_program_handler(callback: CallbackQuery, session: AsyncSession):
     logging.info(f"Handling 'show_program' callback: {callback.data}")
+    locale = get_locale(callback.from_user.language_code)
     program_id = int(callback.data.split("_")[-1])
 
     program_query = (
@@ -66,8 +68,12 @@ async def show_program_handler(callback: CallbackQuery, session: AsyncSession):
     program = (await session.execute(program_query)).scalars().first()
 
     if not program:
-        await callback.message.edit_text("Программа не найдена.", reply_markup=get_main_menu_keyboard())
-        await callback.answer("Программа не найдена.", show_alert=True)
+        text = pick(locale, "Программа не найдена.", "Program not found.")
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
+        )
+        await callback.answer(text, show_alert=True)
         return
 
     leads_count_query = select(func.count(Lead.id)).where(Lead.program_id == program.id)
@@ -108,6 +114,7 @@ async def show_program_handler(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data.startswith("run_program_"))
 async def run_program_handler(callback: CallbackQuery, session: AsyncSession):
     program_id = int(callback.data.split("_")[-1])
+    locale = get_locale(callback.from_user.language_code)
     logging.info(f"Starting immediate job for program_id={program_id}")
 
     owned_program = (
@@ -119,13 +126,20 @@ async def run_program_handler(callback: CallbackQuery, session: AsyncSession):
         )
     ).scalar_one_or_none()
     if not owned_program:
-        await callback.answer("Программа не найдена.", show_alert=True)
+        await callback.answer(
+            pick(locale, "Программа не найдена.", "Program not found."),
+            show_alert=True,
+        )
         return
 
     user = await session.get(User, callback.from_user.id)
     if not user:
         await callback.answer(
-            "Профиль не найден. Откройте главное меню и попробуйте снова.",
+            pick(
+                locale,
+                "Профиль не найден. Откройте главное меню и попробуйте снова.",
+                "Profile not found. Open the main menu and try again.",
+            ),
             show_alert=True,
         )
         return
@@ -133,8 +147,13 @@ async def run_program_handler(callback: CallbackQuery, session: AsyncSession):
     can_run, days_left = check_weekly_analysis_limit(user)
     if not can_run:
         await callback.answer(
-            f"На бесплатном тарифе доступен 1 анализ в неделю. "
-            f"Следующий запуск через {days_left} дн.",
+            pick(
+                locale,
+                f"На бесплатном тарифе доступен 1 анализ в неделю. "
+                f"Следующий запуск через {days_left} дн.",
+                f"Free tier allows 1 analysis per week. "
+                f"Next run available in {days_left} day(s).",
+            ),
             show_alert=True,
         )
         return
@@ -142,8 +161,12 @@ async def run_program_handler(callback: CallbackQuery, session: AsyncSession):
     asyncio.create_task(run_program_job(program_id, callback.from_user.id))
 
     await callback.answer(
-        "🚀 Программа запущена!\n"
-        "Результаты будут приходить в чат по мере их нахождения.",
+        pick(
+            locale,
+            "🚀 Программа запущена!\n"
+            "Результаты будут приходить в чат по мере их нахождения.",
+            "🚀 Program started!\nResults will be sent to chat as they are found.",
+        ),
         show_alert=True,
     )
 
@@ -168,6 +191,7 @@ async def delete_program_confirmation(callback: CallbackQuery, session: AsyncSes
 @router.callback_query(F.data.startswith("confirm_delete_"))
 async def delete_program_confirmed(callback: CallbackQuery, session: AsyncSession):
     program_id = int(callback.data.split("_")[-1])
+    locale = get_locale(callback.from_user.language_code)
     query = select(Program).where(
         Program.id == program_id,
         Program.user_id == callback.from_user.id,
@@ -179,9 +203,23 @@ async def delete_program_confirmed(callback: CallbackQuery, session: AsyncSessio
         await session.delete(program)
         await session.commit()
         remove_program_job(program_id)
-        await callback.message.edit_text(f"✅ Программа «{program_name}» удалена.", reply_markup=get_main_menu_keyboard())
+        await callback.message.edit_text(
+            pick(
+                locale,
+                f"✅ Программа «{program_name}» удалена.",
+                f"✅ Program “{program_name}” deleted.",
+            ),
+            reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
+        )
     else:
-        await callback.message.edit_text("✅ Программа уже была удалена ранее.", reply_markup=get_main_menu_keyboard())
+        await callback.message.edit_text(
+            pick(
+                locale,
+                "✅ Программа уже была удалена ранее.",
+                "✅ Program had already been deleted earlier.",
+            ),
+            reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
+        )
     await callback.answer()
 
 # --- Clear Leads Flow Handlers ---

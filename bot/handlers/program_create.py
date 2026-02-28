@@ -8,7 +8,8 @@ from aiogram.filters import StateFilter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.states import ProgramCreate
-from bot.ui.main_menu import MAIN_MENU_TEXT, get_main_menu_keyboard
+from bot.i18n import get_locale, pick
+from bot.ui.main_menu import get_main_menu_keyboard, get_main_menu_text
 from bot.models.program import Program, ProgramChat
 from bot.models.user import User
 from bot.scheduler import schedule_program_job
@@ -21,8 +22,8 @@ router = Router()
 def get_step_keyboard(back_callback: str = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if back_callback:
-        builder.button(text="◀️ Назад", callback_data=f"back_to_{back_callback}")
-    builder.button(text="❌ Отмена", callback_data="cancel_create_program")
+        builder.button(text="◀️ Back", callback_data=f"back_to_{back_callback}")
+    builder.button(text="❌ Cancel", callback_data="cancel_create_program")
     builder.adjust(2)
     return builder.as_markup()
 
@@ -51,12 +52,20 @@ def get_confirmation_keyboard() -> InlineKeyboardMarkup:
 @router.callback_query(F.data == "create_program")
 async def create_program_start(callback: CallbackQuery, state: FSMContext):
     logging.info("Starting new program creation FSM.")
+    locale = get_locale(callback.from_user.language_code)
     await state.set_state(ProgramCreate.enter_name)
     await callback.message.edit_text(
-        "➕ Новая программа\n\n"
-        "📝 Шаг 1 из 4: Название\n\n"
-        "Как назовём программу?\n"
-        "💡 Например: «Селлеры WB», «Инфобизнес», «Логистика»",
+        pick(
+            locale,
+            "➕ Новая программа\n\n"
+            "📝 Шаг 1 из 4: Название\n\n"
+            "Как назовём программу?\n"
+            "💡 Например: «Селлеры WB», «Инфобизнес», «Логистика»",
+            "➕ New Program\n\n"
+            "📝 Step 1 of 4: Name\n\n"
+            "How would you like to name this program?\n"
+            "💡 Example: “WB Sellers”, “Infobiz”, “Logistics”",
+        ),
         reply_markup=get_step_keyboard()
     )
     await callback.answer()
@@ -211,7 +220,7 @@ async def save_program(callback: CallbackQuery, state: FSMContext, session: Asyn
         f"• 🏆 Скор ≥{new_program.min_score}\n"
         f"• ⏰ Запуск: ежедневно в {new_program.schedule_time}\n\n"
         "🔜 Первый автозапуск: завтра в 09:00",
-        reply_markup=get_main_menu_keyboard() # Go back to main menu
+        reply_markup=get_main_menu_keyboard(callback.from_user.language_code)
     )
     await callback.answer("Программа успешно создана!")
 
@@ -219,9 +228,16 @@ async def save_program(callback: CallbackQuery, state: FSMContext, session: Asyn
 async def cancel_creation(callback: CallbackQuery, state: FSMContext):
     """Cancels the program creation process."""
     logging.info("User cancelled program creation.")
+    locale = get_locale(callback.from_user.language_code)
     await state.clear()
     await callback.message.edit_text(
-        MAIN_MENU_TEXT,
-        reply_markup=get_main_menu_keyboard()
+        get_main_menu_text(callback.from_user.language_code),
+        reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
     )
-    await callback.answer("❌ Создание программы отменено.")
+    await callback.answer(
+        pick(
+            locale,
+            "❌ Создание программы отменено.",
+            "❌ Program creation cancelled.",
+        )
+    )

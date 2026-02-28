@@ -8,7 +8,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.ui.main_menu import get_main_menu_keyboard, MAIN_MENU_TEXT
+from bot.i18n import get_locale, pick, t
+from bot.ui.main_menu import get_main_menu_keyboard, get_main_menu_text
 from bot.models.user import User
 from bot.states import UserProfile
 
@@ -25,33 +26,58 @@ async def _is_channel_member(bot: Bot, user_id: int) -> bool:
         return False
 
 
-def _channel_check_keyboard() -> object:
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📢 Подписаться на канал", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")
-    builder.button(text="✅ Я подписался", callback_data="check_channel_subscription")
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def _get_settings_keyboard() -> object:
+def _channel_check_keyboard(language_code: str | None) -> object:
+    locale = get_locale(language_code)
     builder = InlineKeyboardBuilder()
     builder.button(
-        text="✏️ Изменить описание услуг",
-        callback_data="edit_services_description",
+        text=pick(locale, "📢 Подписаться на канал", "📢 Subscribe to Channel"),
+        url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}",
     )
-    builder.button(text="◀️ Назад", callback_data="main_menu")
+    builder.button(
+        text=pick(locale, "✅ Я подписался", "✅ I Subscribed"),
+        callback_data="check_channel_subscription",
+    )
     builder.adjust(1)
     return builder.as_markup()
 
 
-def _render_settings_text(services_description: str | None) -> str:
-    current = services_description or "Не заполнено"
-    return (
-        "⚙️ Настройки\n"
-        "━━━━━━━━━━━\n\n"
-        "💼 Мои услуги:\n"
-        f"\"{current}\"\n\n"
-        "✏️ Нажмите кнопку ниже, чтобы обновить описание."
+def _get_settings_keyboard(language_code: str | None) -> object:
+    locale = get_locale(language_code)
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=pick(
+            locale,
+            "✏️ Изменить описание услуг",
+            "✏️ Edit Services Description",
+        ),
+        callback_data="edit_services_description",
+    )
+    builder.button(text=t("btn_back", language_code), callback_data="main_menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def _render_settings_text(
+    services_description: str | None, language_code: str | None
+) -> str:
+    locale = get_locale(language_code)
+    current = services_description or pick(locale, "Не заполнено", "Not set")
+    return pick(
+        locale,
+        (
+            "⚙️ Настройки\n"
+            "━━━━━━━━━━━\n\n"
+            "💼 Мои услуги:\n"
+            f"\"{current}\"\n\n"
+            "✏️ Нажмите кнопку ниже, чтобы обновить описание."
+        ),
+        (
+            "⚙️ Settings\n"
+            "━━━━━━━━━━━\n\n"
+            "💼 My Services:\n"
+            f"\"{current}\"\n\n"
+            "✏️ Tap the button below to update your services description."
+        ),
     )
 
 
@@ -80,19 +106,35 @@ async def _continue_onboarding(
     session: AsyncSession,
     state: FSMContext,
 ) -> None:
+    locale = get_locale(getattr(tg_user, "language_code", None))
     user = await _touch_user(tg_user, session)
     if not (user.services_description or "").strip():
         await state.set_state(UserProfile.enter_services_description)
         await state.update_data(profile_flow="onboarding")
         await send_fn(
-            "👋 Привет! Я LeadSense — нахожу клиентов в Telegram-чатах.\n\n"
-            "🎯 Чтобы настроить поиск под тебя, напиши одним сообщением:\n"
-            "• 💼 Какие услуги ты продаёшь?\n"
-            "• 👥 Кто твои клиенты?\n\n"
-            "💡 Пример: «Делаю сайты и лендинги для малого бизнеса».",
+            pick(
+                locale,
+                (
+                    "👋 Привет! Я LeadCore — нахожу клиентов в Telegram-чатах.\n\n"
+                    "🎯 Чтобы настроить поиск под тебя, напиши одним сообщением:\n"
+                    "• 💼 Какие услуги ты продаёшь?\n"
+                    "• 👥 Кто твои клиенты?\n\n"
+                    "💡 Пример: «Делаю сайты и лендинги для малого бизнеса»."
+                ),
+                (
+                    "👋 Hi! I’m LeadCore — I find clients in Telegram chats.\n\n"
+                    "🎯 To personalize lead search for you, send one message:\n"
+                    "• 💼 What services do you sell?\n"
+                    "• 👥 Who are your clients?\n\n"
+                    "💡 Example: “I build websites and landing pages for SMBs.”"
+                ),
+            ),
         )
         return
-    await send_fn(MAIN_MENU_TEXT, reply_markup=get_main_menu_keyboard())
+    await send_fn(
+        get_main_menu_text(getattr(tg_user, "language_code", None)),
+        reply_markup=get_main_menu_keyboard(getattr(tg_user, "language_code", None)),
+    )
 
 
 @router.message(Command("start"))
@@ -101,14 +143,27 @@ async def start_handler(
 ) -> None:
     """Handler for the /start command."""
     logging.info("Handling /start command")
+    locale = get_locale(message.from_user.language_code)
 
     if not await _is_channel_member(bot, message.from_user.id):
         await message.answer(
-            f"🔒 Доступ закрыт\n\n"
-            f"Чтобы пользоваться ботом, подпишись на канал {REQUIRED_CHANNEL} — "
-            "там делюсь инсайтами по лидогенерации в Telegram.\n\n"
-            "После подписки нажми кнопку ниже 👇",
-            reply_markup=_channel_check_keyboard(),
+            pick(
+                locale,
+                (
+                    f"🔒 Доступ закрыт\n\n"
+                    f"Чтобы пользоваться ботом, подпишись на канал "
+                    f"{REQUIRED_CHANNEL} — там делюсь инсайтами по "
+                    "лидогенерации в Telegram.\n\n"
+                    "После подписки нажми кнопку ниже 👇"
+                ),
+                (
+                    f"🔒 Access Restricted\n\n"
+                    f"To use this bot, subscribe to {REQUIRED_CHANNEL} — "
+                    "I share Telegram lead generation insights there.\n\n"
+                    "After subscribing, tap the button below 👇"
+                ),
+            ),
+            reply_markup=_channel_check_keyboard(message.from_user.language_code),
         )
         return
 
@@ -120,9 +175,16 @@ async def check_channel_subscription_handler(
     callback: CallbackQuery, bot: Bot, session: AsyncSession, state: FSMContext
 ) -> None:
     """Re-checks channel membership and continues onboarding if passed."""
+    locale = get_locale(callback.from_user.language_code)
     if not await _is_channel_member(bot, callback.from_user.id):
         await callback.answer(
-            f"❌ Вы ещё не подписаны на {REQUIRED_CHANNEL}.\nПодпишитесь и попробуйте снова.",
+            pick(
+                locale,
+                f"❌ Вы ещё не подписаны на {REQUIRED_CHANNEL}.\n"
+                "Подпишитесь и попробуйте снова.",
+                f"❌ You are not subscribed to {REQUIRED_CHANNEL} yet.\n"
+                "Subscribe and try again.",
+            ),
             show_alert=True,
         )
         return
@@ -140,8 +202,8 @@ async def main_menu_callback_handler(
     await _touch_user(callback.from_user, session)
     await state.clear()
     await callback.message.edit_text(
-        MAIN_MENU_TEXT,
-        reply_markup=get_main_menu_keyboard()
+        get_main_menu_text(callback.from_user.language_code),
+        reply_markup=get_main_menu_keyboard(callback.from_user.language_code),
     )
     await callback.answer()
 
@@ -150,14 +212,24 @@ async def main_menu_callback_handler(
 @router.callback_query(F.data == "statistics")
 async def statistics_stub(callback: CallbackQuery):
     logging.warning("Handler 'statistics' is a stub.")
-    await callback.answer("Вы выбрали 'Статистика'. Этот раздел в разработке.")
+    locale = get_locale(callback.from_user.language_code)
+    await callback.answer(
+        pick(
+            locale,
+            "Вы выбрали 'Статистика'. Этот раздел в разработке.",
+            "You selected 'Statistics'. This section is under development.",
+        )
+    )
 
 @router.callback_query(F.data == "settings")
 async def settings_handler(callback: CallbackQuery, session: AsyncSession):
     user = await _touch_user(callback.from_user, session)
     await callback.message.edit_text(
-        _render_settings_text(user.services_description),
-        reply_markup=_get_settings_keyboard(),
+        _render_settings_text(
+            user.services_description,
+            callback.from_user.language_code,
+        ),
+        reply_markup=_get_settings_keyboard(callback.from_user.language_code),
     )
     await callback.answer()
 
@@ -166,12 +238,18 @@ async def settings_handler(callback: CallbackQuery, session: AsyncSession):
 async def edit_services_description_handler(
     callback: CallbackQuery, state: FSMContext
 ):
+    locale = get_locale(callback.from_user.language_code)
     await state.set_state(UserProfile.enter_services_description)
     await state.update_data(profile_flow="settings")
     await callback.message.edit_text(
-        "✏️ Введите новое описание услуг одним сообщением.\n\n"
-        "💡 Пример: «Настраиваю AI-автоматизацию для e-commerce».",
-        reply_markup=_get_settings_keyboard(),
+        pick(
+            locale,
+            "✏️ Введите новое описание услуг одним сообщением.\n\n"
+            "💡 Пример: «Настраиваю AI-автоматизацию для e-commerce».",
+            "✏️ Enter your new services description in one message.\n\n"
+            "💡 Example: “I implement AI automation for e-commerce.”",
+        ),
+        reply_markup=_get_settings_keyboard(callback.from_user.language_code),
     )
     await callback.answer()
 
@@ -180,9 +258,18 @@ async def edit_services_description_handler(
 async def save_services_description_handler(
     message: Message, state: FSMContext, session: AsyncSession
 ):
+    locale = get_locale(message.from_user.language_code)
     description = (message.text or "").strip()
     if len(description) < 10:
-        await message.answer("⚠️ Описание слишком короткое. Напишите подробнее (10+ символов).")
+        await message.answer(
+            pick(
+                locale,
+                "⚠️ Описание слишком короткое. Напишите подробнее "
+                "(10+ символов).",
+                "⚠️ Description is too short. Please provide at least "
+                "10 characters.",
+            )
+        )
         return
 
     user = await _touch_user(message.from_user, session)
@@ -196,16 +283,28 @@ async def save_services_description_handler(
 
     if flow == "onboarding":
         await message.answer(
-            "🎉 Отлично! Сохранил описание услуг.\n"
-            "🤖 Теперь буду использовать его при квалификации лидов."
+            pick(
+                locale,
+                "🎉 Отлично! Сохранил описание услуг.\n"
+                "🤖 Теперь буду использовать его при квалификации лидов.",
+                "🎉 Great! Services description saved.\n"
+                "🤖 I will now use it while qualifying leads.",
+            )
         )
-        await message.answer(MAIN_MENU_TEXT, reply_markup=get_main_menu_keyboard())
+        await message.answer(
+            get_main_menu_text(message.from_user.language_code),
+            reply_markup=get_main_menu_keyboard(message.from_user.language_code),
+        )
         return
 
     await message.answer(
-        "✅ Описание услуг обновлено.",
+        pick(
+            locale,
+            "✅ Описание услуг обновлено.",
+            "✅ Services description updated.",
+        ),
     )
     await message.answer(
-        _render_settings_text(description),
-        reply_markup=_get_settings_keyboard(),
+        _render_settings_text(description, message.from_user.language_code),
+        reply_markup=_get_settings_keyboard(message.from_user.language_code),
     )

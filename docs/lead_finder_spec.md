@@ -1,4 +1,4 @@
-# LeadSense — Техническое задание
+# LeadCore — Техническое задание
 
 ## Обзор проекта
 
@@ -377,7 +377,7 @@ aiohttp>=3.9.0       # Async HTTP (для Telethon)
 ## Формат Markdown-отчёта
 
 ```markdown
-# LeadSense Report
+# LeadCore Report
 **Дата:** 2024-01-15 14:30
 **Ниша:** Селлеры Wildberries
 **Найдено лидов:** 12

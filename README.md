@@ -1,6 +1,6 @@
-# LeadSense
+# LeadCore
 
-LeadSense is a Telegram bot for finding and qualifying B2B leads from Telegram chats.
+LeadCore is a Telegram bot for finding and qualifying B2B leads from Telegram chats.
 It is designed for agencies/freelancers who sell automation services (Telegram bots, AI assistants, workflow integrations).
 
 ## What It Does

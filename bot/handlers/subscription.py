@@ -13,6 +13,7 @@ from bot.services.subscription import (
     is_paid_user,
     normalize_subscription,
 )
+from bot.i18n import get_locale, pick
 from bot.ui.main_menu import get_main_menu_keyboard
 
 router = Router()
@@ -77,9 +78,17 @@ def _render_subscription_text(user: User) -> str:
 async def subscription_menu_handler(
     callback: CallbackQuery, session: AsyncSession
 ) -> None:
+    locale = get_locale(callback.from_user.language_code)
     user = await session.get(User, callback.from_user.id)
     if not user:
-        await callback.answer("Профиль не найден. Откройте главное меню и попробуйте снова.", show_alert=True)
+        await callback.answer(
+            pick(
+                locale,
+                "Профиль не найден. Откройте главное меню и попробуйте снова.",
+                "Profile not found. Open the main menu and try again.",
+            ),
+            show_alert=True,
+        )
         return
     await callback.message.edit_text(
         _render_subscription_text(user),
@@ -93,28 +102,51 @@ async def subscription_menu_handler(
 async def buy_subscription_handler(
     callback: CallbackQuery, session: AsyncSession
 ) -> None:
+    locale = get_locale(callback.from_user.language_code)
     user = await session.get(User, callback.from_user.id)
     if not user:
-        await callback.answer("Профиль не найден. Откройте главное меню и попробуйте снова.", show_alert=True)
+        await callback.answer(
+            pick(
+                locale,
+                "Профиль не найден. Откройте главное меню и попробуйте снова.",
+                "Profile not found. Open the main menu and try again.",
+            ),
+            show_alert=True,
+        )
         return
 
     period_key = callback.data.split("_")[-1]
     if period_key not in STARS_PRICES:
-        await callback.answer("Неверный период подписки.", show_alert=True)
+        await callback.answer(
+            pick(
+                locale,
+                "Неверный период подписки.",
+                "Invalid subscription period.",
+            ),
+            show_alert=True,
+        )
         return
 
     price = STARS_PRICES[period_key]
-    title = f"LeadSense — подписка {_period_label(period_key)}"
+    title = pick(
+        locale,
+        f"LeadCore — подписка {_period_label(period_key)}",
+        f"LeadCore — subscription {_period_label(period_key)}",
+    )
     payload = f"subscription:{user.telegram_id}:{period_key}"
 
     await callback.message.answer_invoice(
         title=title,
-        description="Безлимитные программы и запуски анализа.",
+        description=pick(
+            locale,
+            "Безлимитные программы и запуски анализа.",
+            "Unlimited programs and analysis runs.",
+        ),
         payload=payload,
         currency="XTR",
         prices=[LabeledPrice(label=title, amount=price)],
     )
-    await callback.answer("Инвойс отправлен.")
+    await callback.answer(pick(locale, "Инвойс отправлен.", "Invoice sent."))
 
 
 @router.pre_checkout_query()
@@ -126,6 +158,7 @@ async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery) -> None:
 async def successful_payment_handler(
     message: Message, session: AsyncSession
 ) -> None:
+    locale = get_locale(message.from_user.language_code)
     payment = message.successful_payment
     if not payment:
         return
@@ -156,10 +189,16 @@ async def successful_payment_handler(
     await session.commit()
 
     await message.answer(
-        "🎉 Подписка активирована!\n"
-        f"📅 Действует до: {expires_at.strftime('%d.%m.%Y')}\n\n"
-        "🚀 Теперь доступны безлимитные программы и запуски анализа.",
-        reply_markup=get_main_menu_keyboard(),
+        pick(
+            locale,
+            "🎉 Подписка активирована!\n"
+            f"📅 Действует до: {expires_at.strftime('%d.%m.%Y')}\n\n"
+            "🚀 Теперь доступны безлимитные программы и запуски анализа.",
+            "🎉 Subscription activated!\n"
+            f"📅 Valid until: {expires_at.strftime('%d.%m.%Y')}\n\n"
+            "🚀 Unlimited programs and analysis runs are now available.",
+        ),
+        reply_markup=get_main_menu_keyboard(message.from_user.language_code),
     )
 
 
