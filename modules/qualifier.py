@@ -264,7 +264,7 @@ def get_freshness_summary(candidate_data: dict) -> Dict[str, Any]:
     }
 
 
-def qualify_lead(
+async def qualify_lead(
     candidate_data: dict,
     enrichment_data: dict,
     niche: str,
@@ -319,7 +319,7 @@ def qualify_lead(
         logger.info(f"Qualifying lead: @{username}. Waiting for LLM...")
 
         start_time = time.time()
-        response = llm.invoke([system_message, human_message])
+        response = await llm.ainvoke([system_message, human_message])
         end_time = time.time()
         duration = end_time - start_time
 
@@ -425,7 +425,7 @@ def load_batch_analysis_prompt() -> str:
         return ""
 
 
-def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+async def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Analyzes an entire chat's messages in one LLM call to identify potential leads.
 
@@ -477,7 +477,7 @@ def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
         start_time = time.time()
-        response = llm.invoke([system_message, human_message])
+        response = await llm.ainvoke([system_message, human_message])
         end_time = time.time()
         duration = end_time - start_time
 
@@ -515,7 +515,7 @@ def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
                     "Ограничь potential_leads максимум 20, ответ сделай компактным."
                 )
             )
-            retry_response = llm.invoke([system_message, retry_message])
+            retry_response = await llm.ainvoke([system_message, retry_message])
             parsed_retry = _parse_llm_json(retry_response.content)
             logger.info(
                 "Batch analysis retry succeeded. "

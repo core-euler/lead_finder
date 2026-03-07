@@ -373,7 +373,7 @@ async def parse_users_from_messages(
                 })
 
             # Call batch analysis
-            batch_result = batch_analyze_chat(batch_messages)
+            batch_result = await batch_analyze_chat(batch_messages)
 
             if "error" in batch_result:
                 logger.warning(

@@ -23,11 +23,11 @@ def schedule_program_job(program_id: int, chat_id: int, schedule_time: str) -> N
     Uses serializable kwargs only (no Bot object) so APScheduler can
     persist the job in PostgreSQL across restarts.
     """
-    from bot.services.program_runner import run_program_job
+    from bot.tasks import enqueue_program_job
 
     hour, minute = schedule_time.split(":")
     scheduler.add_job(
-        run_program_job,
+        enqueue_program_job,
         trigger="cron",
         hour=int(hour),
         minute=int(minute),

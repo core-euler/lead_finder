@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup
@@ -12,7 +11,7 @@ from bot.models.lead import Lead
 from bot.models.user import User
 from bot.ui.main_menu import get_main_menu_keyboard
 from bot.i18n import get_locale, pick
-from bot.services.program_runner import run_program_job
+from bot.tasks import enqueue_program_job
 from bot.services.subscription import check_weekly_analysis_limit
 from bot.ui.lead_card import format_lead_card, get_lead_card_keyboard
 from bot.scheduler import remove_program_job
@@ -158,14 +157,30 @@ async def run_program_handler(callback: CallbackQuery, session: AsyncSession):
         )
         return
 
-    asyncio.create_task(run_program_job(program_id, callback.from_user.id))
+    try:
+        task_id = enqueue_program_job(program_id, callback.from_user.id)
+        logger.info(
+            f"Program run enqueued: program_id={program_id}, "
+            f"user_id={callback.from_user.id}, task_id={task_id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to enqueue program run: {e}")
+        await callback.answer(
+            pick(
+                locale,
+                "Не удалось поставить запуск в очередь. Попробуйте позже.",
+                "Failed to queue the run. Please try again later.",
+            ),
+            show_alert=True,
+        )
+        return
 
     await callback.answer(
         pick(
             locale,
-            "🚀 Программа запущена!\n"
-            "Результаты будут приходить в чат по мере их нахождения.",
-            "🚀 Program started!\nResults will be sent to chat as they are found.",
+            "🕓 Программа поставлена в очередь.\n"
+            "Результаты будут приходить в чат по мере обработки.",
+            "🕓 Program queued.\nResults will be sent as processing continues.",
         ),
         show_alert=True,
     )

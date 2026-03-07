@@ -28,7 +28,8 @@ def _period_label(period_key: str) -> str:
     return _PERIOD_LABELS.get(period_key, period_key)
 
 
-def _subscription_menu_keyboard() -> object:
+def _subscription_menu_keyboard(language_code: str | None) -> object:
+    locale = get_locale(language_code)
     builder = InlineKeyboardBuilder()
     for period_key in ("1m", "3m", "6m", "12m"):
         stars = STARS_PRICES[period_key]
@@ -43,8 +44,8 @@ def _subscription_menu_keyboard() -> object:
         callback_data="subscription_support",
     )
     builder.button(
-        text="◀️ Главное меню",
-        callback_data="main_menu",
+        text=pick(locale, "◀️ Профиль", "◀️ Profile"),
+        callback_data="profile_menu",
     )
     builder.adjust(1)
     return builder.as_markup()
@@ -92,7 +93,7 @@ async def subscription_menu_handler(
         return
     await callback.message.edit_text(
         _render_subscription_text(user),
-        reply_markup=_subscription_menu_keyboard(),
+        reply_markup=_subscription_menu_keyboard(callback.from_user.language_code),
     )
     await session.commit()
     await callback.answer()

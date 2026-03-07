@@ -22,6 +22,9 @@ TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID")
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
+CELERY_WORKER_CONCURRENCY = int(os.getenv("CELERY_WORKER_CONCURRENCY", 1))
 
 # Admin panel access (comma-separated Telegram IDs)
 _admin_ids_raw = os.getenv("ADMIN_TELEGRAM_IDS", "")
@@ -82,6 +85,7 @@ MESSAGE_MAX_AGE_DAYS = int(os.getenv("MESSAGE_MAX_AGE_DAYS", 10))  # Only messag
 
 # Message parsing limits
 MESSAGES_LIMIT = int(os.getenv("MESSAGES_LIMIT", 500))  # Number of recent messages to parse per chat
+MAX_CONCURRENT_PIPELINES = int(os.getenv("MAX_CONCURRENT_PIPELINES", 1))
 
 # Message freshness categories (for display/metadata only, not scoring)
 MESSAGE_FRESHNESS_DAYS = {

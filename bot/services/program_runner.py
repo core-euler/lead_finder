@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Dict, Any, Callable, Awaitable
 from aiogram import Bot
@@ -25,6 +26,9 @@ logger = logging.getLogger(__name__)
 LeadCallback = Callable[[Lead], Awaitable[None]]
 _INT32_MIN = -(2**31)
 _INT32_MAX = 2**31 - 1
+_PIPELINE_SEMAPHORE = asyncio.Semaphore(
+    max(1, int(getattr(config, "MAX_CONCURRENT_PIPELINES", 1)))
+)
 
 
 async def _enrich_candidate(candidate: Dict[str, Any], enrich_web: bool) -> Dict[str, Any]:
@@ -39,7 +43,10 @@ async def _enrich_candidate(candidate: Dict[str, Any], enrich_web: bool) -> Dict
     
     if enrich_web:
         logger.info(f"Enriching @{candidate.get('username')} with web search.")
-        enrichment_data["web_search_data"] = web_enricher.enrich_with_web_search(candidate)
+        enrichment_data["web_search_data"] = await asyncio.to_thread(
+            web_enricher.enrich_with_web_search,
+            candidate,
+        )
 
     return enrichment_data
 
@@ -213,7 +220,10 @@ async def run_program_pipeline(
     pains_saved_count = 0
     logger.info(f"--- Found a total of {total_candidates} unique candidates. ---")
 
-    ai_ideas = web_enricher.search_ai_ideas_for_niche(program.niche_description)
+    ai_ideas = await asyncio.to_thread(
+        web_enricher.search_ai_ideas_for_niche,
+        program.niche_description,
+    )
     if ai_ideas:
         logger.info("AI ideas for niche fetched from web search.")
     user_profile = await session.get(User, user_id)
@@ -229,7 +239,7 @@ async def run_program_pipeline(
         
         enrichment_data = await _enrich_candidate(candidate, program.enrich)
         
-        qualification_result_data = qualifier.qualify_lead(
+        qualification_result_data = await qualifier.qualify_lead(
             candidate,
             enrichment_data,
             program.niche_description,
@@ -379,13 +389,14 @@ async def run_program_pipeline(
 
 async def run_program_job(program_id: int, chat_id: int) -> None:
     """
-    Executed by APScheduler (or asyncio.create_task for manual runs).
-    Creates its own Bot instance so it can be safely serialized by APScheduler.
+    Executed in worker process (via Celery task).
+    Creates its own Bot instance for safe isolated execution.
     """
     logger.info(f"[JOB] Starting job for program_id={program_id}, user_chat_id={chat_id}")
     bot = Bot(token=config.TELEGRAM_BOT_TOKEN, parse_mode="HTML")
     try:
-        await _run_program_job_inner(bot, program_id, chat_id)
+        async with _PIPELINE_SEMAPHORE:
+            await _run_program_job_inner(bot, program_id, chat_id)
     finally:
         await bot.session.close()
 

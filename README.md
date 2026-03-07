@@ -19,6 +19,7 @@ It is designed for agencies/freelancers who sell automation services (Telegram b
 - `Telethon` for Telegram parsing/auth session
 - `SQLAlchemy + PostgreSQL` for storage
 - `APScheduler` for scheduled jobs
+- `Celery + Redis` for queued background pipeline execution
 - `CometAPI` (OpenAI-compatible) for LLM calls
 - `Google Custom Search API` for web enrichment/best-practice context
 
@@ -32,6 +33,7 @@ Main entrypoint: `run_bot.py`
 - `docs/` — product specs and implementation notes
 - `run_bot.py` — bot launcher
 - `docker-compose.yml` — app + postgres services
+- `docker-compose.yml` — app + worker + redis + postgres services
 
 ## Prerequisites
 
@@ -71,6 +73,10 @@ Useful runtime settings:
 - `MESSAGES_LIMIT`
 - `MESSAGE_MAX_AGE_DAYS`
 - `SAFETY_MODE` (`fast`, `normal`, `careful`)
+- `MAX_CONCURRENT_PIPELINES` (in-worker parallel pipelines, keep `1` for stability)
+- `CELERY_BROKER_URL`
+- `CELERY_RESULT_BACKEND`
+- `CELERY_WORKER_CONCURRENCY`
 
 ## Quick Start (Docker)
 
@@ -89,7 +95,7 @@ docker compose up -d --build
 3. Watch logs:
 
 ```bash
-docker compose logs -f app
+docker compose logs -f app worker
 ```
 
 ## Telegram Session Authentication (Telethon)

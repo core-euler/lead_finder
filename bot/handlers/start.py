@@ -45,6 +45,10 @@ def _get_settings_keyboard(language_code: str | None) -> object:
     locale = get_locale(language_code)
     builder = InlineKeyboardBuilder()
     builder.button(
+        text=pick(locale, "💎 Подписка", "💎 Subscription"),
+        callback_data="subscription_menu",
+    )
+    builder.button(
         text=pick(
             locale,
             "✏️ Изменить описание услуг",
@@ -65,18 +69,18 @@ def _render_settings_text(
     return pick(
         locale,
         (
-            "⚙️ Настройки\n"
+            "👤 Профиль\n"
             "━━━━━━━━━━━\n\n"
             "💼 Мои услуги:\n"
             f"\"{current}\"\n\n"
-            "✏️ Нажмите кнопку ниже, чтобы обновить описание."
+            "Выберите действие:"
         ),
         (
-            "⚙️ Settings\n"
+            "👤 Profile\n"
             "━━━━━━━━━━━\n\n"
             "💼 My Services:\n"
             f"\"{current}\"\n\n"
-            "✏️ Tap the button below to update your services description."
+            "Choose an action:"
         ),
     )
 
@@ -221,8 +225,8 @@ async def statistics_stub(callback: CallbackQuery):
         )
     )
 
-@router.callback_query(F.data == "settings")
-async def settings_handler(callback: CallbackQuery, session: AsyncSession):
+@router.callback_query(F.data.in_({"settings", "profile_menu"}))
+async def profile_menu_handler(callback: CallbackQuery, session: AsyncSession):
     user = await _touch_user(callback.from_user, session)
     await callback.message.edit_text(
         _render_settings_text(
