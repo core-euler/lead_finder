@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -157,12 +158,15 @@ async def run_program_handler(callback: CallbackQuery, session: AsyncSession):
         )
         return
 
-    try:
+    async def _enqueue_background() -> None:
         task_id = enqueue_program_job(program_id, callback.from_user.id)
         logger.info(
             f"Program run enqueued: program_id={program_id}, "
             f"user_id={callback.from_user.id}, task_id={task_id}"
         )
+
+    try:
+        asyncio.create_task(_enqueue_background())
     except Exception as e:
         logger.error(f"Failed to enqueue program run: {e}")
         await callback.answer(
@@ -178,9 +182,10 @@ async def run_program_handler(callback: CallbackQuery, session: AsyncSession):
     await callback.answer(
         pick(
             locale,
-            "🕓 Программа поставлена в очередь.\n"
+            "🕓 Программа запущена и поставлена в очередь.\n"
             "Результаты будут приходить в чат по мере обработки.",
-            "🕓 Program queued.\nResults will be sent as processing continues.",
+            "🕓 Program started and queued.\n"
+            "Results will be sent as processing continues.",
         ),
         show_alert=True,
     )

@@ -73,6 +73,7 @@ async def admin_panel_command(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
     if not _is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещен.")
         return
     await state.clear()
     text = await _render_admin_dashboard(session)
@@ -84,7 +85,7 @@ async def admin_panel_callback(
     callback: CallbackQuery, session: AsyncSession, state: FSMContext
 ) -> None:
     if not _is_admin(callback.from_user.id):
-        await callback.answer()
+        await callback.answer("⛔ Доступ запрещен.", show_alert=True)
         return
     await state.clear()
     text = await _render_admin_dashboard(session)

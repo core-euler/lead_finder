@@ -239,7 +239,7 @@ async def run_program_pipeline(
         
         enrichment_data = await _enrich_candidate(candidate, program.enrich)
         
-        qualification_result_data = await qualifier.qualify_lead(
+        qualification_result_data = await qualifier.qualify_lead_async(
             candidate,
             enrichment_data,
             program.niche_description,

@@ -1,4 +1,5 @@
 import json
+import asyncio
 import logging
 import re
 import time
@@ -264,7 +265,7 @@ def get_freshness_summary(candidate_data: dict) -> Dict[str, Any]:
     }
 
 
-async def qualify_lead(
+def qualify_lead(
     candidate_data: dict,
     enrichment_data: dict,
     niche: str,
@@ -319,7 +320,7 @@ async def qualify_lead(
         logger.info(f"Qualifying lead: @{username}. Waiting for LLM...")
 
         start_time = time.time()
-        response = await llm.ainvoke([system_message, human_message])
+        response = llm.invoke([system_message, human_message])
         end_time = time.time()
         duration = end_time - start_time
 
@@ -413,6 +414,24 @@ async def qualify_lead(
         return {"error": str(e)}
 
 
+async def qualify_lead_async(
+    candidate_data: dict,
+    enrichment_data: dict,
+    niche: str,
+    ai_ideas: str = "",
+    user_services_description: str = "",
+) -> dict:
+    """Async wrapper that runs blocking qualification in a worker thread."""
+    return await asyncio.to_thread(
+        qualify_lead,
+        candidate_data,
+        enrichment_data,
+        niche,
+        ai_ideas,
+        user_services_description,
+    )
+
+
 def load_batch_analysis_prompt() -> str:
     """Loads the batch chat analysis prompt from the file."""
     try:
@@ -425,7 +444,7 @@ def load_batch_analysis_prompt() -> str:
         return ""
 
 
-async def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Analyzes an entire chat's messages in one LLM call to identify potential leads.
 
@@ -477,7 +496,7 @@ async def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
         start_time = time.time()
-        response = await llm.ainvoke([system_message, human_message])
+        response = llm.invoke([system_message, human_message])
         end_time = time.time()
         duration = end_time - start_time
 
@@ -515,7 +534,7 @@ async def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
                     "Ограничь potential_leads максимум 20, ответ сделай компактным."
                 )
             )
-            retry_response = await llm.ainvoke([system_message, retry_message])
+            retry_response = llm.invoke([system_message, retry_message])
             parsed_retry = _parse_llm_json(retry_response.content)
             logger.info(
                 "Batch analysis retry succeeded. "
@@ -542,6 +561,13 @@ async def batch_analyze_chat(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"An error occurred during batch chat analysis: {e}")
         return {"error": str(e), "potential_leads": []}
+
+
+async def batch_analyze_chat_async(
+    messages: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Async wrapper that runs blocking batch analysis in a worker thread."""
+    return await asyncio.to_thread(batch_analyze_chat, messages)
 
 
 if __name__ == '__main__':

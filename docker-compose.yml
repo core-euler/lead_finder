@@ -22,7 +22,7 @@ services:
       - .:/app
     env_file:
       - .env
-    command: celery -A bot.celery_app.celery_app worker --loglevel=INFO --concurrency=${CELERY_WORKER_CONCURRENCY:-1}
+    command: celery -A bot.celery_app.celery_app worker --pool=solo --loglevel=INFO --concurrency=${CELERY_WORKER_CONCURRENCY:-1}
     environment:
       - PYTHONPATH=.
     depends_on:

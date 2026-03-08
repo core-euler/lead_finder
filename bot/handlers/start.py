@@ -238,6 +238,11 @@ async def profile_menu_handler(callback: CallbackQuery, session: AsyncSession):
     await callback.answer()
 
 
+async def settings_handler(callback: CallbackQuery, session: AsyncSession):
+    """Backward-compatible alias used by unit tests."""
+    await profile_menu_handler(callback, session)
+
+
 @router.callback_query(F.data == "edit_services_description")
 async def edit_services_description_handler(
     callback: CallbackQuery, state: FSMContext
