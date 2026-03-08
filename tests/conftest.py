@@ -29,8 +29,8 @@ def user_factory():
             subscription_type=subscription_type,
             subscription_expires_at=subscription_expires_at,
             last_analysis_at=last_analysis_at,
-            created_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
-            last_active_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
+            created_at=datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
+            last_active_at=datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
         )
 
     return _build
