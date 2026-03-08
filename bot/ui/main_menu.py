@@ -21,8 +21,8 @@ def get_main_menu_keyboard(language_code: str | None = None) -> InlineKeyboardMa
         callback_data="pains_menu",
     )
     builder.button(
-        text=t("btn_subscription", language_code),
-        callback_data="subscription_menu",
+        text=t("btn_profile", language_code),
+        callback_data="profile_menu",
     )
     builder.adjust(1)  # Adjust to 1 button per row
     return builder.as_markup()

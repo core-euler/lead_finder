@@ -22,11 +22,11 @@ def test_main_menu_text_localized() -> None:
 def test_main_menu_keyboard_ru() -> None:
     kb = get_main_menu_keyboard("ru")
     texts = _flatten_texts(kb)
-    assert texts == ["📋 Мои программы", "🔥 Боли и контент", "💎 Подписка"]
+    assert texts == ["📋 Мои программы", "🔥 Боли и контент", "👤 Профиль"]
 
 
 @pytest.mark.unit
 def test_main_menu_keyboard_en() -> None:
     kb = get_main_menu_keyboard("en")
     texts = _flatten_texts(kb)
-    assert texts == ["📋 My Programs", "🔥 Pains & Content", "💎 Subscription"]
+    assert texts == ["📋 My Programs", "🔥 Pains & Content", "👤 Profile"]
