@@ -15,7 +15,7 @@ from bot.states import UserProfile
 
 router = Router()
 
-REQUIRED_CHANNEL = "@post_devcore"
+REQUIRED_CHANNEL = "@post_cybercore"
 
 
 async def _is_channel_member(bot: Bot, user_id: int) -> bool:
