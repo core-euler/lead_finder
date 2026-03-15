@@ -21,7 +21,7 @@ class Program(Base):
     niche_description: Mapped[str] = mapped_column(Text, nullable=False)
     
     # Settings
-    min_score: Mapped[int] = mapped_column(Integer, default=5)
+    min_score: Mapped[int] = mapped_column(Integer, default=2)
     max_leads_per_run: Mapped[int] = mapped_column(Integer, default=20)
     enrich: Mapped[bool] = mapped_column(Boolean, default=False)
     
