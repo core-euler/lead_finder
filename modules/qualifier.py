@@ -190,47 +190,19 @@ def format_messages_with_metadata(messages: List[Dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def format_enrichment_data_for_prompt(
-    enrichment_data: Dict[str, Any],
-    candidate_data: dict
-) -> str:
-    """Formats the enrichment data into a string for the LLM prompt."""
-    prompt_text = ""
-
-    # Use messages_with_metadata if available (new format)
+def format_candidate_messages_for_prompt(candidate_data: dict) -> str:
+    """Formats candidate messages into a string for the LLM prompt."""
     messages_with_metadata = candidate_data.get("messages_with_metadata", [])
     if messages_with_metadata:
-        prompt_text += format_messages_with_metadata(messages_with_metadata)
-    else:
-        # Fallback to old format (sample_messages)
-        sample_messages = candidate_data.get("sample_messages", [])
-        if sample_messages:
-            prompt_text += "--- Примеры сообщений пользователя в чате ---\n"
-            for msg in sample_messages:
-                prompt_text += f'- "{msg}"\n'
-            prompt_text += "\n"
+        return format_messages_with_metadata(messages_with_metadata)
 
-    if enrichment_data.get("channel_data"):
-        ch_data = (enrichment_data["channel_data"] or {}).get("entity_data") or {}
-        prompt_text += "--- Данные с личного Telegram-канала ---\n"
-        prompt_text += f"Название: {ch_data.get('title', 'N/A')}\n"
-        prompt_text += f"Подписчиков: {ch_data.get('participants_count', 'N/A')}\n"
-        prompt_text += f"Описание: {ch_data.get('about', 'N/A')}\n\n"
+    sample_messages = candidate_data.get("sample_messages", [])
+    if sample_messages:
+        lines = ["--- Примеры сообщений пользователя в чате ---"]
+        lines += [f'- "{msg}"' for msg in sample_messages]
+        return "\n".join(lines) + "\n\n"
 
-    if enrichment_data.get("web_search_data"):
-        web_data = enrichment_data["web_search_data"]
-        prompt_text += "--- Данные из веб-поиска ---\n"
-        if web_data.get('website'):
-            prompt_text += f"Найденный сайт: {web_data['website']}\n"
-        mentions_str = "\n".join([
-            f'- {m.get("title", "")} ({m.get("source", "")})'
-            for m in web_data.get("mentions", [])
-        ])
-        if mentions_str:
-            prompt_text += f"Упоминания в сети:\n{mentions_str}\n"
-        prompt_text += "\n"
-
-    return prompt_text
+    return ""
 
 
 def get_freshness_summary(candidate_data: dict) -> Dict[str, Any]:
@@ -267,9 +239,7 @@ def get_freshness_summary(candidate_data: dict) -> Dict[str, Any]:
 
 def qualify_lead(
     candidate_data: dict,
-    enrichment_data: dict,
     niche: str,
-    ai_ideas: str = "",
     user_services_description: str = "",
 ) -> dict:
     """
@@ -299,9 +269,7 @@ def qualify_lead(
         f"Сообщений в чате-источнике: "
         f"{candidate_data.get('messages_in_chat', 'N/A')}\n\n"
     )
-    input_data += format_enrichment_data_for_prompt(enrichment_data, candidate_data)
-    if ai_ideas:
-        input_data += ai_ideas
+    input_data += format_candidate_messages_for_prompt(candidate_data)
 
     system_message = SystemMessage(
         content=(
@@ -416,18 +384,14 @@ def qualify_lead(
 
 async def qualify_lead_async(
     candidate_data: dict,
-    enrichment_data: dict,
     niche: str,
-    ai_ideas: str = "",
     user_services_description: str = "",
 ) -> dict:
     """Async wrapper that runs blocking qualification in a worker thread."""
     return await asyncio.to_thread(
         qualify_lead,
         candidate_data,
-        enrichment_data,
         niche,
-        ai_ideas,
         user_services_description,
     )
 

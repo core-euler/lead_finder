@@ -17,8 +17,6 @@ from bot.ui.lead_card import format_lead_card, get_lead_card_keyboard
 from bot.services.subscription import check_weekly_analysis_limit, mark_analysis_started
 from modules.telegram_client import AuthorizationRequiredError
 from modules import members_parser, qualifier
-from modules.enrichment import telegram as telegram_enricher
-from modules.enrichment import web_search as web_enricher
 from modules.pain_clusterer import cluster_new_pains
 
 logger = logging.getLogger(__name__)
@@ -31,24 +29,6 @@ _PIPELINE_SEMAPHORE = asyncio.Semaphore(
 )
 
 
-async def _enrich_candidate(candidate: Dict[str, Any], enrich_web: bool) -> Dict[str, Any]:
-    """Enriches candidate data with Telegram channel info and web search results."""
-    enrichment_data = {}
-    if candidate.get("has_channel") and candidate.get("channel_username"):
-        channel_username = candidate["channel_username"]
-        logger.info(f"Enriching with personal channel: {channel_username}")
-        parsed_channel_data = await telegram_enricher.enrich_with_telegram_data(channel_username)
-        if parsed_channel_data:
-            enrichment_data["channel_data"] = parsed_channel_data
-    
-    if enrich_web:
-        logger.info(f"Enriching @{candidate.get('username')} with web search.")
-        enrichment_data["web_search_data"] = await asyncio.to_thread(
-            web_enricher.enrich_with_web_search,
-            candidate,
-        )
-
-    return enrichment_data
 
 
 def _extract_pain_texts(qualification_result: Dict[str, Any]) -> list[str]:
@@ -220,12 +200,6 @@ async def run_program_pipeline(
     pains_saved_count = 0
     logger.info(f"--- Found a total of {total_candidates} unique candidates. ---")
 
-    ai_ideas = await asyncio.to_thread(
-        web_enricher.search_ai_ideas_for_niche,
-        program.niche_description,
-    )
-    if ai_ideas:
-        logger.info("AI ideas for niche fetched from web search.")
     user_profile = await session.get(User, user_id)
     user_services_description = (
         user_profile.services_description if user_profile else ""
@@ -237,13 +211,9 @@ async def run_program_pipeline(
 
         logger.info(f"--- Processing candidate {i+1}/{total_candidates}: @{candidate['username']} ---")
         
-        enrichment_data = await _enrich_candidate(candidate, program.enrich)
-        
         qualification_result_data = await qualifier.qualify_lead_async(
             candidate,
-            enrichment_data,
             program.niche_description,
-            ai_ideas,
             user_services_description=user_services_description,
         )
 

@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from bot.models.pain import Pain, PainCluster, GeneratedPost
-from modules.enrichment.web_search import search_ai_best_practices_for_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +91,6 @@ def _render_prompt(
     cluster_description: str,
     pain_count: int,
     sample_quotes: str,
-    ai_best_practices: str,
 ) -> str:
     """Render prompt by replacing only known placeholders.
 
@@ -106,7 +104,6 @@ def _render_prompt(
         .replace("{cluster_description}", cluster_description)
         .replace("{pain_count}", str(pain_count))
         .replace("{sample_quotes}", sample_quotes)
-        .replace("{ai_best_practices}", ai_best_practices)
     )
 
 
@@ -150,13 +147,6 @@ async def generate_post(
     sample_quotes = "\n".join(f"• «{q}»" for q in clean_quotes) if clean_quotes else "Нет цитат."
 
     post_type_label = _POST_TYPE_LABELS.get(post_type, post_type)
-    ai_best_practices = await asyncio.to_thread(
-        search_ai_best_practices_for_cluster,
-        cluster.name,
-        cluster.description,
-        post_type_label,
-    )
-
     prompt_template = _load_prompt()
     prompt = _render_prompt(
         prompt_template,
@@ -165,7 +155,6 @@ async def generate_post(
         cluster_description=cluster.description,
         pain_count=cluster.pain_count,
         sample_quotes=sample_quotes,
-        ai_best_practices=ai_best_practices,
     )
 
     try:
